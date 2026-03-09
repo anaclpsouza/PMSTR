@@ -14,7 +14,7 @@ extern int o; // numero de operacoes
 extern int t; // numero de conjuntos de ferramentas
 extern int c; // capacidade do magazine
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::vector<vector<int>> controleOp)
+double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::map<int, std::map<int, int>> controleOp)
 {
     if (maquina.empty())
     {
@@ -125,7 +125,6 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
             int idOp = maquina[i][j].idOp;
             bool troca = false;
 
-            controleOp[idJob][idOp] = 1;
             if (idOp > 1)
             {
                 if (!controleOp[idJob][idOp - 1] == 1)
@@ -133,6 +132,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
                     return INT_MAX;
                 }
             }
+            controleOp[idJob][idOp] = 1;
 
             if (carregados[i][maquina[i][j].toolSetId] == 0)
             {

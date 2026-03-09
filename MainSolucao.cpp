@@ -58,7 +58,7 @@ int main()
     std::vector<Operation> vetOperacao;
     int i = 0;
     int operacao_global = 0;
-    std::vector<vector<int>> controleOp(o);
+    std::map<int, std::map<int, int>> controleOp;
     while (getline(fin, line) && !line.empty())
     {
         replace(line.begin(), line.end(), ',', ' ');
