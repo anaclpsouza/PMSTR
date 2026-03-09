@@ -58,6 +58,7 @@ int main()
     std::vector<Operation> vetOperacao;
     int i = 0;
     int operacao_global = 0;
+    std::vector<vector<int>> controleOp(o);
     while (getline(fin, line) && !line.empty())
     {
         replace(line.begin(), line.end(), ',', ' ');
@@ -75,6 +76,7 @@ int main()
             int maq = operacao_global % m; // round-robin
             maquinas[maq].push_back(op);
             vetOperacao.push_back(op);
+            controleOp[idJob][idOp] = 0;
             i++;
             operacao_global++;
         }
@@ -83,9 +85,11 @@ int main()
 
     std::map<int, double> tempo_final;
 
-    double objective = objectiveFunction(maquinas, tempo_final, vetOperacao);
+    double objective = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp);
 
     cout << "VALOR OBJETIVO: " << objective << endl;
+
+    system("pause");
 
     return 0;
 }

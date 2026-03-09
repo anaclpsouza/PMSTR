@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <map>
 #include "Operation.h"
+#include <climits>
 
 using namespace std;
 
@@ -13,7 +14,7 @@ extern int o; // numero de operacoes
 extern int t; // numero de conjuntos de ferramentas
 extern int c; // capacidade do magazine
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes)
+double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::vector<vector<int>> controleOp)
 {
     if (maquina.empty())
     {
@@ -121,7 +122,17 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
                 continue;
 
             int idJob = maquina[i][j].idJob;
+            int idOp = maquina[i][j].idOp;
             bool troca = false;
+
+            controleOp[idJob][idOp] = 1;
+            if (idOp > 1)
+            {
+                if (!controleOp[idJob][idOp - 1] == 1)
+                {
+                    return INT_MAX;
+                }
+            }
 
             if (carregados[i][maquina[i][j].toolSetId] == 0)
             {
