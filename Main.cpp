@@ -42,16 +42,16 @@ std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
     {
 
         std::uniform_int_distribution<> dis(0, tarefasDisponiveis.size() - 1);
-        int indexSorteado = dis(g);
-        int taskIdSorteada = tarefasDisponiveis[indexSorteado];
+        int idSorteado = dis(g);
+        int idJobSorteado = tarefasDisponiveis[idSorteado];
 
-        auto &fila = tarefas[taskIdSorteada];
+        auto &fila = tarefas[idJobSorteado];
         operacoesRandomizadas.push_back(fila.front());
         fila.pop_front();
 
         if (fila.empty())
         {
-            tarefasDisponiveis.erase(tarefasDisponiveis.begin() + indexSorteado);
+            tarefasDisponiveis.erase(tarefasDisponiveis.begin() + idSorteado);
         }
     }
 
