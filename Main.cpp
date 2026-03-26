@@ -24,7 +24,7 @@ std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
     std::map<int, std::deque<Operation>> tarefas;
     for (const auto &op : vetOperacao)
     {
-        tarefas[op.idOp].push_back(op);
+        tarefas[op.idJob].push_back(op);
     }
 
     std::vector<Operation> operacoesRandomizadas;
