@@ -5,7 +5,7 @@ CXXFLAGS := -g
 
 all: Main Run
 
-Main: Main.cpp ObjectiveFunction.cpp Operation.cpp ObjectiveFunction.h Operation.h
+Main: Main.cpp ObjectiveFunction.cpp Operation.cpp ObjectiveFunction.h Operation.h Buscas.h
 	$(CXX) $(CXXFLAGS) Main.cpp ObjectiveFunction.cpp Operation.cpp -o Main
 
 Run: Run.cpp
