@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			fileR << "Arquivo,Instancia,O,M,T,C,Solucao_Inicial,Tempo_Execucao(s)" << std::endl;
+			fileR << "Arquivo,Instancia,O,M,T,C,Solucao_Inicial,Melhor_Solucao(Insertion),Tempo_Execucao(s)" << std::endl;
 
 			struct dirent *ent2;
 			while ((ent2 = readdir(dir2)) != nullptr)
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 						continue;
 
 					std::string line;
-					std::string instance, inicial_sol, tempo_sol;
+					std::string instance, inicial_sol,melhor_sol, tempo_sol;
 					int o, m, t, c;
 					if (!std::getline(file, line))
 					{
@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 
 					std::replace(line.begin(), line.end(), ',', ' ');
 					std::istringstream iss(line);
-					if (iss >> instance >> o >> m >> t >> c >> inicial_sol >> tempo_sol)
+					if (iss >> instance >> o >> m >> t >> c >> inicial_sol >> melhor_sol >> tempo_sol)
 					{
 						fileR << nomeArq
 							  << "," << instance
@@ -180,6 +180,7 @@ int main(int argc, char *argv[])
 							  << "," << t
 							  << "," << c
 							  << "," << inicial_sol
+							  << "," << melhor_sol
 							  << "," << tempo_sol
 							  << std::endl;
 					}

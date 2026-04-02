@@ -4,23 +4,37 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <cstdlib>
 #include "Operation.h"
 #include <climits>
 
 using namespace std;
+
+static inline bool objectiveDebugEnabled()
+{
+    const char *env = std::getenv("PMSTR_DEBUG_LOCAL_SEARCH");
+    return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
 
 extern int m; // numero de maquinas
 extern int o; // numero de operacoes
 extern int t; // numero de conjuntos de ferramentas
 extern int c; // capacidade do magazine
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::map<int, std::map<int, int>> controleOp)
+double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::map<int, std::map<int, int>> controleOp, std::vector<double>& tardiness_maq)
 {
     if (maquina.empty())
     {
-        std::cout << "[DEBUG] Lista de maquinas vazia." << std::endl;
+        if (objectiveDebugEnabled())
+            std::cout << "[DEBUG] Lista de maquinas vazia." << std::endl;
         return 0.0;
     }
+
+    if (vetOperacoes.size() != o)
+    {
+         return INT_MAX;
+    }
+    
 
     double wd = 1.0;  // Peso do atraso
     double ws = 1.0;  // Peso da troca
@@ -29,6 +43,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
     int setups = 0;
     double tardiness = 0.0;
     vector<double> tempo(m, 0.0);
+    tardiness_maq.resize(m, 0.0);
 
     vector<int> u(m, 0); // quantidade de ferramentas atualmente carregadas
     vector<vector<int>> carregados(m, vector<int>(t, 0));
@@ -193,15 +208,17 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
 
             if (tempo[i] > maquina[i][j].dueDate)
             {
-                double atraso = tempo[i] - maquina[i][j].dueDate;
-                tardiness += atraso;
+                tardiness_maq[i] = tempo[i] - maquina[i][j].dueDate;
+                tardiness += tardiness_maq[i];
             }
         }
     }
 
-    std::cout << "[DEBUG] Tardiness final: " << tardiness << std::endl;
+    if (objectiveDebugEnabled())
+        std::cout << "[DEBUG] Tardiness final: " << tardiness << std::endl;
     double resultado = (wd * tardiness) + (ws * tau * setups);
-    std::cout << "[DEBUG] Total setups=" << setups << std::endl;
+    if (objectiveDebugEnabled())
+        std::cout << "[DEBUG] Total setups=" << setups << std::endl;
     return resultado;
 }
 #endif

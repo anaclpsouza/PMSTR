@@ -11,6 +11,7 @@
 #include <chrono>
 #include <deque>
 #include <random>
+#include "Buscas.h"
 
 using namespace std;
 std::ofstream fileSolution;
@@ -144,30 +145,30 @@ int main(int argsc, char *argv[])
         atribuirMaquinas(opsAleatorias);
     }
 
-    std::map<int, double> tempo_cinal;
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
+    std::map<int, double> tempo_final;
+    std::vector<double> tardiness_maq;
 
-    double objective = objectiveFunction(maquinas, tempo_cinal, vetOperacao, controleOp);
+    high_resolution_clock::time_point t1 = high_resolution_clock::now();
+    double sol_inicial = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double ganho = insertion(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double melhor_solucao = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 
     auto tempo_execucao = duration_cast<duration<double>>(t2 - t1);
 
     fileSolution
-        << "Instance_name,O,M,T,C,Solucao_Inicial,Tempo de_execucao(s)" << endl
+        << "Instance_name,O,M,T,C,Solucao_Inicial,Melhor_Solucao(Insertion),Tempo de_execucao(s)" << endl
         << m << "M" << o << ","
         << o << ","
         << m << ","
         << t << ","
         << c << ","
-        << objective << ","
+        << sol_inicial << ","
+        << melhor_solucao << ","
         << tempo_execucao.count() << endl;
 
     fileSolution.close();
-
-    cout << "VALOR OBJETIVO: " << objective << endl;
-
-    system("pause");
 
     return 0;
 }

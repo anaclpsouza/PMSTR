@@ -10,6 +10,6 @@ extern int o;
 extern int t;
 extern int c;
 
-double objectiveFunction(const std::vector<std::vector<Operation>>& maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacao, std::map<int, std::map<int, int>> controleOp);
+double objectiveFunction(const std::vector<std::vector<Operation>>& maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacao, std::map<int, std::map<int, int>> controleOp, std::vector<double>& tardiness_maq);
 
 #endif
