@@ -21,7 +21,11 @@ extern int o; // numero de operacoes
 extern int t; // numero de conjuntos de ferramentas
 extern int c; // capacidade do magazine
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std::map<int, double> tempo_final, std::vector<Operation> vetOperacoes, std::map<int, std::map<int, int>> controleOp, std::vector<double>& tardiness_maq)
+double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
+                         const std::map<int, double> &tempo_final_base,
+                         const std::vector<Operation> &vetOperacoes,
+                         const std::map<int, std::map<int, int>> &controleOp_base,
+                         std::vector<double> &tardiness_maq)
 {
     if (maquina.empty())
     {
@@ -32,9 +36,12 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, std
 
     if (vetOperacoes.size() != o)
     {
-         return INT_MAX;
+        return INT_MAX;
     }
-    
+
+    std::map<int, double> tempo_final = tempo_final_base;
+    std::map<int, std::map<int, int>> controleOp = controleOp_base;
+    tardiness_maq.assign(m, 0.0);
 
     double wd = 1.0;  // Peso do atraso
     double ws = 1.0;  // Peso da troca

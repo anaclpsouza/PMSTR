@@ -61,25 +61,35 @@ std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
 
 void atribuirMaquinas(std::vector<Operation> operacoes)
 {
+    std::vector<double> tempoMaq(m, 0.0);
+    std::map<int, double> tempoJob;
+
     for (const auto &op : operacoes)
     {
         int melhorMaq = 0;
-        double menorTempo = -1.0;
+        double menorTermino = -1.0;
 
         for (int j = 0; j < m; j++)
         {
+            double prontoJob = (op.idOp > 1) ? tempoJob[op.idJob] : 0.0;
 
-            double tempoCalculado = tempoMaq[j] + op.releaseTime + op.processingTime;
+            double inicioPossivel = std::max({tempoMaq[j], prontoJob, (double)op.releaseTime});
+            double terminoPrevisto = inicioPossivel + op.processingTime;
 
-            if (menorTempo < 0 || tempoCalculado < menorTempo)
+            if (menorTermino < 0 || terminoPrevisto < menorTermino)
             {
-                menorTempo = tempoCalculado;
+                menorTermino = terminoPrevisto;
                 melhorMaq = j;
             }
         }
 
         maquinas[melhorMaq].push_back(op);
-        tempoMaq[melhorMaq] += (op.releaseTime + op.processingTime);
+
+        double prontoJob = (op.idOp > 1) ? tempoJob[op.idJob] : 0.0;
+        double inicioReal = std::max({tempoMaq[melhorMaq], prontoJob, (double)op.releaseTime});
+
+        tempoMaq[melhorMaq] = inicioReal + op.processingTime;
+        tempoJob[op.idJob] = tempoMaq[melhorMaq];
     }
 }
 
@@ -115,11 +125,10 @@ int main(int argsc, char *argv[])
 
     std::vector<Operation> vetOperacao;
     int i = 0;
-    int operacao_global = 0;
     std::map<int, std::map<int, int>> controleOp;
-    maquinas.resize(m);
 
     fileSolution.open(argv[1]);
+    controleOp.clear();
 
     while (getline(cin, line) && !line.empty())
     {
@@ -138,34 +147,39 @@ int main(int argsc, char *argv[])
             vetOperacao.push_back(op);
             controleOp[idJob][idOp] = 0;
             i++;
-            operacao_global++;
         }
-
-        std::vector<Operation> opsAleatorias = randomizarOp(vetOperacao);
-        atribuirMaquinas(opsAleatorias);
     }
+    
+    maquinas.clear();
+    maquinas.resize(m);
+    std::vector<Operation> opsAleatorias = randomizarOp(vetOperacao);
+    atribuirMaquinas(opsAleatorias);
 
     std::map<int, double> tempo_final;
     std::vector<double> tardiness_maq;
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
+
     double sol_inicial = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
-    double ganho = insertion(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
-    double melhor_solucao = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double sol_insertion = re_insertion(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double sol_insertionIM = insertion_im(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double sol_twoSwap = two_swap(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 
     auto tempo_execucao = duration_cast<duration<double>>(t2 - t1);
 
     fileSolution
-        << "Instance_name,O,M,T,C,Solucao_Inicial,Melhor_Solucao(Insertion),Tempo de_execucao(s)" << endl
+        << "Instance_name,O,M,T,C,Solucao_Inicial,Insertion,InsertionIM,2Swap,Tempo de_execucao(s)" << endl
         << m << "M" << o << ","
         << o << ","
         << m << ","
         << t << ","
         << c << ","
         << sol_inicial << ","
-        << melhor_solucao << ","
+        << sol_insertion << ","
+        << sol_insertionIM << ","
+        << sol_twoSwap << ","
         << tempo_execucao.count() << endl;
 
     fileSolution.close();
