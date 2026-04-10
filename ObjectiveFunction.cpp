@@ -1,5 +1,4 @@
-#ifndef OBJECTIVEFUNCTION_H
-#define OBJECTIVEFUNCTION_H
+#include "ObjectiveFunction.h"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -7,6 +6,7 @@
 #include <cstdlib>
 #include "Operation.h"
 #include <climits>
+#include <limits>
 
 using namespace std;
 
@@ -16,15 +16,22 @@ static inline bool objectiveDebugEnabled()
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
-extern int m; // numero de maquinas
-extern int o; // numero de operacoes
-extern int t; // numero de conjuntos de ferramentas
-extern int c; // capacidade do magazine
+int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina) {
+   for (int i = 0; i < maquina.size(); ++i) {
+        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob](const Operation& op) {
+            return op.idJob == idJob;
+        });
+
+        if (it != maquina[i].end()) {
+            return i;
+        }
+   }
+   return -1;
+}
 
 double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
-                         const std::map<int, double> &tempo_final_base,
                          const std::vector<Operation> &vetOperacoes,
-                         const std::map<int, std::map<int, int>> &controleOp_base,
+                         const std::map<int, std::map<int, int>> &controleOp,
                          std::vector<double> &tardiness_maq)
 {
     if (maquina.empty())
@@ -39,9 +46,19 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         return INT_MAX;
     }
 
-    std::map<int, double> tempo_final = tempo_final_base;
-    std::map<int, std::map<int, int>> controleOp = controleOp_base;
-    tardiness_maq.assign(m, 0.0);
+    // conferindo a regra de precedência na mesma máquina de uma vez
+    for (int i = 0; i < m; ++i)
+    {
+        std::map<int, int> ultimaOpDoJob;
+        for (const auto &op : maquina[i])
+        {
+            if (ultimaOpDoJob.count(op.idJob) && ultimaOpDoJob[op.idJob] > op.idOp)
+            {
+                return INT_MAX;
+            }
+            ultimaOpDoJob[op.idJob] = op.idOp;
+        }
+    }
 
     double wd = 1.0;  // Peso do atraso
     double ws = 1.0;  // Peso da troca
@@ -58,6 +75,19 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     vector<vector<vector<int>>> prioridades(m, vector<vector<int>>(t, vector<int>()));
 
     vector<int> setsSize(t);
+    int maxJobId = 0;
+    int maxOpId = 0;
+
+    for (const auto &op : vetOperacoes)
+    {
+        if (op.idJob > maxJobId)
+            maxJobId = op.idJob;
+        if (op.idOp > maxOpId)
+            maxOpId = op.idOp;
+    }
+
+    std::vector<std::vector<double>> tempo_final(maxJobId + 1,
+                                                 std::vector<double>(maxOpId + 1, std::numeric_limits<double>::max()));
 
     for (int i = 0; i < m; ++i)
     {
@@ -136,10 +166,45 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         if (maquina[i].size() > max_op)
             max_op = maquina[i].size();
     }
-    for (int j = 0; j < max_op; ++j) // operacao
+
+    int idxPorMaquina[maquina.size()] = {0};
+    vector<int> esperandoPorQuem(maquina.size(), -1);
+
+    // for (int j = 0; j < max_op; ++j) // operacao
+    // {
+    // Criterio de parada vai ser todas as maquinas ja terem alocado toda as tarefas
+
+    
+
+    bool acabei = false;
+    while (!acabei)
     {
+        acabei = true;
+        for (int i = 0; i < maquina.size(); ++i)
+        {
+            if (idxPorMaquina[i] < maquina[i].size())
+            {
+
+                if (objectiveDebugEnabled())
+                {
+                    cout << "[DEBUG] Operações processadas na máquina " << i << " " << idxPorMaquina[i] << endl;
+                    cout << "[DEBUG] Operações totais: " << maquina[i].size() << endl;
+                }
+
+                acabei = false;
+                break;
+            }
+        }
+        if (acabei)
+        {
+            cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
+            break;
+        }
+
         for (int i = 0; i < maquina.size(); i++) // máquinas
         {
+            int j = idxPorMaquina[i];
+
             if (j >= maquina[i].size())
                 continue;
 
@@ -147,14 +212,52 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             int idOp = maquina[i][j].idOp;
             bool troca = false;
 
+            double tempoPai = 0.0;
             if (idOp > 1)
             {
-                if (!controleOp[idJob][idOp - 1] == 1)
+                tempoPai = tempo_final[idJob][idOp - 1];
+
+                if (tempoPai >= std::numeric_limits<double>::max())
                 {
-                    return INT_MAX;
+                    if (objectiveDebugEnabled())
+                    {
+                        cout << "[DEBUG] Máquina em espera: " << i << " com a operação " << idxPorMaquina[i] << endl;
+                    }
+                    esperandoPorQuem[i] = maquinaPai(maquina[i][j].idJob, maquina);
+                    vector<int> estado(esperandoPorQuem.size(), 0);
+                    
+                    for (int z = 0; z < esperandoPorQuem.size(); z++){
+                        if (estado[z] ==0){
+                            int atual = z;
+                            while (atual != -1 && estado[atual]!=2){
+                                if (estado[atual] == 1){
+                                    if (objectiveDebugEnabled()) cout << "[DEBUG] ACHEI UM CICLO E INVALIDEI A SOLUCAO" << endl;
+                                    return INT_MAX;
+                                }
+                                estado[atual] = 1;
+                                atual = esperandoPorQuem[atual];
+                            }
+                            atual = z;
+                            while(atual != -1 && estado[atual]==1){
+                                estado[atual] = 2;
+                                atual = esperandoPorQuem[atual];
+                            }
+                        }    
+                    }
+
+                    continue;
                 }
             }
-            controleOp[idJob][idOp] = 1;
+
+            if (objectiveDebugEnabled())
+            {
+                cout << "[DEBUG] Máquina em processamento: " << i << " com a operação " << idxPorMaquina[i] << " de " << maquina[i].size() << " totais" << endl;
+            }
+
+            idxPorMaquina[i]++;
+
+            // Cálculo do tempo considerando a espera
+            tempo[i] = std::max({tempo[i], tempoPai, (double)maquina[i][j].releaseTime});
 
             if (carregados[i][maquina[i][j].toolSetId] == 0)
             {
@@ -187,7 +290,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                         }
                     }
                     if (pMaior == -1)
-                        return 0;
+                        return INT_MAX;
                     carregados[i][pMaior] = 0;
                     u[i] -= setsSize[pMaior];
                 }
@@ -195,28 +298,18 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             if (troca)
             {
                 ++setups;
-            }
-            double tempoMin = 0.0;
-            if (tempo_final[idJob] > 0)
-            {
-                tempoMin = tempo_final[idJob];
-            }
-
-            tempo[i] = std::max({tempo[i], tempoMin, (double)maquina[i][j].releaseTime});
-
-            tempo[i] += maquina[i][j].processingTime; // processa a operação (adiciona o processing time)
-
-            if (troca)
-            {
                 tempo[i] += tau;
             }
 
-            tempo_final[idJob] = tempo[i];
+            tempo[i] += maquina[i][j].processingTime; // processa a operação (adiciona o processing time)
+
+            tempo_final[idJob][idOp] = tempo[i];
 
             if (tempo[i] > maquina[i][j].dueDate)
             {
-                tardiness_maq[i] = tempo[i] - maquina[i][j].dueDate;
-                tardiness += tardiness_maq[i];
+                double atraso = tempo[i] - maquina[i][j].dueDate;
+                tardiness_maq[i] += atraso; // Acumula na máquina específica
+                tardiness += atraso;
             }
         }
     }
@@ -228,4 +321,3 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         std::cout << "[DEBUG] Total setups=" << setups << std::endl;
     return resultado;
 }
-#endif

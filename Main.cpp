@@ -160,10 +160,10 @@ int main(int argsc, char *argv[])
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-    double sol_inicial = objectiveFunction(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
-    double sol_insertion = re_insertion(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
-    double sol_insertionIM = insertion_im(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
-    double sol_twoSwap = two_swap(maquinas, tempo_final, vetOperacao, controleOp, tardiness_maq);
+    double sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double sol_insertion = re_insertion(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double sol_insertionIM = insertion_im(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double sol_twoSwap = two_swap(maquinas, vetOperacao, controleOp, tardiness_maq);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 

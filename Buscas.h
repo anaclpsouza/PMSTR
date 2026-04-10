@@ -39,12 +39,12 @@ static inline void buscasDebugLog(const std::string &msg)
 }
 
 long re_insertion(std::vector<std::vector<Operation>> &maquina,
-                  std::map<int, double> &tempo_final,
+
                   std::vector<Operation> &vetOperacoes,
                   std::map<int, std::map<int, int>> &controleOp,
                   std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_maq);
+    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
     long resultadoAtual = r0;
 
     if (buscasDebugEnabled())
@@ -102,7 +102,7 @@ long re_insertion(std::vector<std::vector<Operation>> &maquina,
                 maquina[m].erase(maquina[m].begin() + i);
                 maquina[m].insert(maquina[m].begin() + j, opCopia);
 
-                long resultadoNovo = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_teste);
+                long resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
 
                 if (buscasDebugEnabled())
                 {
@@ -118,7 +118,7 @@ long re_insertion(std::vector<std::vector<Operation>> &maquina,
                         std::cout << "[DEBUG][IS] Melhoria encontrada! Novo objetivo=" << resultadoNovo
                                   << " ganho=" << (r0 - resultadoNovo) << std::endl;
                     }
-                    
+
                     tardiness_maq = tardiness_teste;
                     return resultadoNovo;
                 }
@@ -143,12 +143,12 @@ long re_insertion(std::vector<std::vector<Operation>> &maquina,
 }
 
 long insertion_im(std::vector<std::vector<Operation>> &maquina,
-                  std::map<int, double> &tempo_final,
+
                   std::vector<Operation> &vetOperacoes,
                   std::map<int, std::map<int, int>> &controleOp,
                   std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_maq);
+    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
     long resultadoAtual = r0;
 
     if (buscasDebugEnabled())
@@ -191,9 +191,15 @@ long insertion_im(std::vector<std::vector<Operation>> &maquina,
                 Operation opCopia = maquina[m][posAtual];
                 maquina[m].erase(maquina[m].begin() + posAtual);
                 maquina[m].insert(maquina[m].begin() + j, opCopia);
-
-                long resultadoNovo = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_teste);
-
+                 if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][ISIM] Foi pra avaliação " << std::endl;
+                }
+                long resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][ISIM] Voltou da avaliação " << std::endl;
+                }
                 if (resultadoNovo < resultadoAtual)
                 {
                     if (buscasDebugEnabled())
@@ -202,7 +208,7 @@ long insertion_im(std::vector<std::vector<Operation>> &maquina,
                                   << " ganho=" << (r0 - resultadoNovo) << std::endl;
                     }
 
-                    tardiness_maq = tardiness_teste; 
+                    tardiness_maq = tardiness_teste;
                     return resultadoNovo;
                 }
 
@@ -224,13 +230,17 @@ long insertion_im(std::vector<std::vector<Operation>> &maquina,
 }
 
 long two_swap(std::vector<std::vector<Operation>> &maquina,
-              std::map<int, double> &tempo_final,
               std::vector<Operation> &vetOperacoes,
               std::map<int, std::map<int, int>> &controleOp,
               std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_maq);
+    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
     long resultadoAtual = r0;
+
+    if (buscasDebugEnabled())
+    {
+        std::cout << "[DEBUG][2SWAP] Objetivo inicial: " << r0 << std::endl;
+    }
 
     int numMaquinas = maquina.size();
 
@@ -253,8 +263,15 @@ long two_swap(std::vector<std::vector<Operation>> &maquina,
             {
                 std::swap(maquina[m][i], maquina[m][j]);
 
-                long novoResultado = objectiveFunction(maquina, tempo_final, vetOperacoes, controleOp, tardiness_teste);
-
+                if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][2SWap] Foi avaliar " << std::endl;
+                }
+                long novoResultado = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][2SWap] Voltou da avaliação " << std::endl;
+                }
                 if (novoResultado < resultadoAtual)
                 {
                     if (buscasDebugEnabled())
@@ -268,6 +285,11 @@ long two_swap(std::vector<std::vector<Operation>> &maquina,
                 std::swap(maquina[m][i], maquina[m][j]);
             }
         }
+    }
+
+    if (buscasDebugEnabled())
+    {
+        std::cout << "[DEBUG][2SWap] Nenhuma melhoria encontrada. Retornando objetivo inicial=" << r0 << std::endl;
     }
 
     return r0;

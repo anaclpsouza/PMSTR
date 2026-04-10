@@ -11,7 +11,6 @@ extern int t;
 extern int c;
 
 double objectiveFunction(const std::vector<std::vector<Operation>> &maquina, 
-    const std::map<int, double> &tempo_final_base, 
     const std::vector<Operation> &vetOperacoes, 
     const std::map<int, std::map<int, int>> &controleOp_base, 
     std::vector<double>& tardiness_maq);
