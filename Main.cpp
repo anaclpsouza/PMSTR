@@ -61,6 +61,11 @@ std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
 
 void atribuirMaquinas(std::vector<Operation> operacoes)
 {
+    if (true)
+    {
+        cout << "[DEBUG] Gerando solução inicial aleatória" << endl;
+    }
+
     std::vector<double> tempoMaq(m, 0.0);
     std::map<int, double> tempoJob;
 
@@ -149,18 +154,28 @@ int main(int argsc, char *argv[])
             i++;
         }
     }
-    
-    maquinas.clear();
-    maquinas.resize(m);
-    std::vector<Operation> opsAleatorias = randomizarOp(vetOperacao);
-    atribuirMaquinas(opsAleatorias);
 
+   /*  maquinas.clear();
+    maquinas.resize(m); */
+    /*  std::vector<Operation> opsAleatorias = randomizarOp(vetOperacao);
+     atribuirMaquinas(opsAleatorias);
+  */
     std::map<int, double> tempo_final;
     std::vector<double> tardiness_maq;
+    std::vector<Operation> opsAleatorias;
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-    double sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double sol_inicial = INT_MAX;
+    while (sol_inicial == INT_MAX)
+    {
+        maquinas.clear();
+        maquinas.resize(m);
+        opsAleatorias = randomizarOp(vetOperacao);
+        atribuirMaquinas(opsAleatorias);
+        sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
+    }
+
     double sol_insertion = re_insertion(maquinas, vetOperacao, controleOp, tardiness_maq);
     double sol_insertionIM = insertion_im(maquinas, vetOperacao, controleOp, tardiness_maq);
     double sol_twoSwap = two_swap(maquinas, vetOperacao, controleOp, tardiness_maq);
