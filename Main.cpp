@@ -189,7 +189,7 @@ int main(int argsc, char *argv[])
         distInicial(tarefas);
         sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
     }
-    double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq, o);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 

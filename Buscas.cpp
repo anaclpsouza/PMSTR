@@ -61,7 +61,7 @@ long two_swap(std::vector<std::vector<Operation>> &maquina,
 long ILS(std::vector<std::vector<Operation>> &maquina,
          std::vector<Operation> &vetOperacoes,
          std::map<int, std::map<int, int>> &controleOp,
-         std::vector<double> &tardiness_maq)
+         std::vector<double> &tardiness_maq, int totalOperacoes)
 {
     // intensificação inicial
     long s = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
@@ -72,11 +72,6 @@ long ILS(std::vector<std::vector<Operation>> &maquina,
     std::vector<std::vector<Operation>> melhor_sol = maquina; 
     std::vector<std::vector<Operation>> sol_base = maquina;   
 
-    int totalOperacoes = 0;
-    for (const auto &opsMaquina : maquina)
-    {
-        totalOperacoes += static_cast<int>(opsMaquina.size());
-    }
     int o = std::max(1, static_cast<int>(std::ceil(totalOperacoes * 0.10)));
 
     for (size_t i = 0; i < 500; i++)
@@ -91,7 +86,7 @@ long ILS(std::vector<std::vector<Operation>> &maquina,
         insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
         long s_candidato = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
 
-        // Atualiza o Melhor Global (Recorde)
+        // Atualiza o Melhor Global 
         if (s_candidato < melhor) {
             melhor = s_candidato;
             melhor_sol = maquina;
