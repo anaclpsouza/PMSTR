@@ -11,7 +11,7 @@
 #include <chrono>
 #include <deque>
 #include <random>
-#include "Buscas.h"
+#include "Buscas.cpp"
 
 using namespace std;
 std::ofstream fileSolution;
@@ -20,15 +20,32 @@ std::vector<std::vector<Operation>> maquinas;
 std::map<int, double> tempoMaq;
 using namespace std::chrono;
 
-std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
+void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
 {
-    std::map<int, std::deque<Operation>> tarefas;
-    for (const auto &op : vetOperacao)
+    std::ofstream out(caminhoArquivo, std::ios::app);
+    if (!out.is_open())
     {
-        tarefas[op.idJob].push_back(op);
+        return;
     }
 
-    std::vector<Operation> operacoesRandomizadas;
+    out << "Execucao: " << execucao << endl;
+    out << "Instancia: " << nomeInstancia << endl;
+    for (size_t maq = 0; maq < maquinas.size(); ++maq)
+    {
+        out << "M" << (maq + 1) << ":";
+        for (const auto &op : maquinas[maq])
+        {
+            out << " J" << op.idJob << "-O" << op.idOp;
+        }
+        out << endl;
+    }
+    out << endl;
+}
+
+ /* faz um aleatorio por tarefa. Ordena as Tarefas (a tarefa leva suas operações junto) aleatoriamente, e distribui um para cada máquina. Se uma tarefa foi, todas as operacoes foi. Depois que cada máquina recebeu uma, a próxima tarefa vai para a máquina com o menor completion time calculado como soma do tempo de processamento da tarefa (que é, somatorio do release time de cada operacao + tempo de processamento). Repete até que todas as tarefas tenham sido alocadas. */
+
+void distInicial(std::map<int, std::deque<Operation>> tarefas)
+{
     std::vector<int> tarefasDisponiveis;
 
     for (auto const &[id, fila] : tarefas)
@@ -36,65 +53,57 @@ std::vector<Operation> randomizarOp(std::vector<Operation> vetOperacao)
         tarefasDisponiveis.push_back(id);
     }
 
+    if (tarefasDisponiveis.empty() || m <= 0)
+    {
+        return;
+    }
+
     std::random_device rd;
     std::mt19937 g(rd());
+    std::shuffle(tarefasDisponiveis.begin(), tarefasDisponiveis.end(), g);
 
-    while (!tarefasDisponiveis.empty())
+    auto cargaTarefa = [&](int idJob)
     {
+        double soma = 0.0;
+        const auto &ops = tarefas[idJob];
 
-        std::uniform_int_distribution<> dis(0, tarefasDisponiveis.size() - 1);
-        int idSorteado = dis(g);
-        int idJobSorteado = tarefasDisponiveis[idSorteado];
-
-        auto &fila = tarefas[idJobSorteado];
-        operacoesRandomizadas.push_back(fila.front());
-        fila.pop_front();
-
-        if (fila.empty())
+        for (const auto &op : ops)
         {
-            tarefasDisponiveis.erase(tarefasDisponiveis.begin() + idSorteado);
+            soma += op.releaseTime + op.processingTime;
         }
-    }
 
-    return operacoesRandomizadas;
-}
+        return soma;
+    };
 
-void atribuirMaquinas(std::vector<Operation> operacoes)
-{
-    if (true)
+    std::vector<double> completionMaq(m, 0.0);
+    size_t idxTarefa = 0;
+
+    size_t tarefasIniciais = std::min((size_t)m, tarefasDisponiveis.size());
+    for (size_t maq = 0; maq < tarefasIniciais; ++maq)
     {
-        cout << "[DEBUG] Gerando solução inicial aleatória" << endl;
+        int idJob = tarefasDisponiveis[idxTarefa++];
+        auto &ops = tarefas[idJob];
+
+        maquinas[maq].insert(maquinas[maq].end(), ops.begin(), ops.end());
+        completionMaq[maq] += cargaTarefa(idJob);
     }
 
-    std::vector<double> tempoMaq(m, 0.0);
-    std::map<int, double> tempoJob;
-
-    for (const auto &op : operacoes)
+    while (idxTarefa < tarefasDisponiveis.size())
     {
         int melhorMaq = 0;
-        double menorTermino = -1.0;
-
-        for (int j = 0; j < m; j++)
+        for (int maq = 1; maq < m; ++maq)
         {
-            double prontoJob = (op.idOp > 1) ? tempoJob[op.idJob] : 0.0;
-
-            double inicioPossivel = std::max({tempoMaq[j], prontoJob, (double)op.releaseTime});
-            double terminoPrevisto = inicioPossivel + op.processingTime;
-
-            if (menorTermino < 0 || terminoPrevisto < menorTermino)
+            if (completionMaq[maq] < completionMaq[melhorMaq])
             {
-                menorTermino = terminoPrevisto;
-                melhorMaq = j;
+                melhorMaq = maq;
             }
         }
 
-        maquinas[melhorMaq].push_back(op);
+        int idJob = tarefasDisponiveis[idxTarefa++];
+        auto &ops = tarefas[idJob];
 
-        double prontoJob = (op.idOp > 1) ? tempoJob[op.idJob] : 0.0;
-        double inicioReal = std::max({tempoMaq[melhorMaq], prontoJob, (double)op.releaseTime});
-
-        tempoMaq[melhorMaq] = inicioReal + op.processingTime;
-        tempoJob[op.idJob] = tempoMaq[melhorMaq];
+        maquinas[melhorMaq].insert(maquinas[melhorMaq].end(), ops.begin(), ops.end());
+        completionMaq[melhorMaq] += cargaTarefa(idJob);
     }
 }
 
@@ -111,6 +120,12 @@ int parseHeaderValue(string line)
 
 int main(int argsc, char *argv[])
 {
+    if (argsc < 2)
+    {
+        std::cerr << "Arquivo de saida nao informado." << std::endl;
+        return 1;
+    }
+
     ios_base::sync_with_stdio(false);
     cin.imbue(locale("C"));
 
@@ -155,49 +170,48 @@ int main(int argsc, char *argv[])
         }
     }
 
-   /*  maquinas.clear();
-    maquinas.resize(m); */
-    /*  std::vector<Operation> opsAleatorias = randomizarOp(vetOperacao);
-     atribuirMaquinas(opsAleatorias);
-  */
     std::map<int, double> tempo_final;
     std::vector<double> tardiness_maq;
-    std::vector<Operation> opsAleatorias;
+    std::map<int, std::deque<Operation>> tarefas;
+    for (const auto &op : vetOperacao)
+    {
+        tarefas[op.idJob].push_back(op);
+    }
 
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
+   
     double sol_inicial = INT_MAX;
     while (sol_inicial == INT_MAX)
     {
         maquinas.clear();
         maquinas.resize(m);
-        opsAleatorias = randomizarOp(vetOperacao);
-        atribuirMaquinas(opsAleatorias);
+        distInicial(tarefas);
         sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
     }
-
-    double sol_insertion = re_insertion(maquinas, vetOperacao, controleOp, tardiness_maq);
-    double sol_insertionIM = insertion_im(maquinas, vetOperacao, controleOp, tardiness_maq);
-    double sol_twoSwap = two_swap(maquinas, vetOperacao, controleOp, tardiness_maq);
+    double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
 
     auto tempo_execucao = duration_cast<duration<double>>(t2 - t1);
 
     fileSolution
-        << "Instance_name,O,M,T,C,Solucao_Inicial,Insertion,InsertionIM,2Swap,Tempo de_execucao(s)" << endl
+        << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
         << m << "M" << o << ","
         << o << ","
         << m << ","
         << t << ","
         << c << ","
         << sol_inicial << ","
-        << sol_insertion << ","
-        << sol_insertionIM << ","
-        << sol_twoSwap << ","
+        << ils << ","
         << tempo_execucao.count() << endl;
 
     fileSolution.close();
+
+    if (argsc >= 5)
+    {
+        escreverMatrizFinalCompilada(argv[2], argv[3], argv[4]);
+    }
 
     return 0;
 }
