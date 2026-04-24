@@ -14,8 +14,10 @@
 #include <time.h>
 #include <climits>
 #include <deque>
+
 #include "Operation.h"
 #include "ObjectiveFunction.h"
+#include "Buscas.h"
 
 using namespace std;
 std::random_device rd;
@@ -37,38 +39,17 @@ static inline void buscasDebugLog(const std::string &msg)
         std::cout << msg << std::endl;
 }
 
-long pertubacao(std::vector<std::vector<Operation>> &maquina,
-                std::vector<Operation> &vetOperacoes,
-                std::map<int, std::map<int, int>> &controleOp,
-                std::vector<double> &tardiness_maq,
-                int o);
-
-long re_insertion(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq);
-
-long insertion_im(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq);
-
-long two_swap(std::vector<std::vector<Operation>> &maquina,
-              std::vector<Operation> &vetOperacoes,
-              std::map<int, std::map<int, int>> &controleOp,
-              std::vector<double> &tardiness_maq);
-
-long ILS(std::vector<std::vector<Operation>> &maquina,
-         std::vector<Operation> &vetOperacoes,
-         std::map<int, std::map<int, int>> &controleOp,
-         std::vector<double> &tardiness_maq, int totalOperacoes)
+double ILS(std::vector<std::vector<Operation>> &maquina,
+           std::vector<Operation> &vetOperacoes,
+           std::map<int, std::map<int, int>> &controleOp,
+           std::vector<double> &tardiness_maq, int totalOperacoes)
 {
     // intensificação inicial
-    long s = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
+    double s = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
     s = insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
     s = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
     
-    long melhor = s;
+    double melhor = s;
     std::vector<std::vector<Operation>> melhor_sol = maquina; 
     std::vector<std::vector<Operation>> sol_base = maquina;   
 
@@ -84,7 +65,7 @@ long ILS(std::vector<std::vector<Operation>> &maquina,
         // Busca Local (Intensificação)
         re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
         insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
-        long s_candidato = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
+        double s_candidato = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
 
         // Atualiza o Melhor Global 
         if (s_candidato < melhor) {
@@ -107,11 +88,11 @@ long ILS(std::vector<std::vector<Operation>> &maquina,
     return melhor;
 }
 
-long pertubacao(std::vector<std::vector<Operation>> &maquina,
-                std::vector<Operation> &vetOperacoes,
-                std::map<int, std::map<int, int>> &controleOp,
-                std::vector<double> &tardiness_maq,
-                int o)
+double pertubacao(std::vector<std::vector<Operation>> &maquina,
+                  std::vector<Operation> &vetOperacoes,
+                  std::map<int, std::map<int, int>> &controleOp,
+                  std::vector<double> &tardiness_maq,
+                  int o)
 {
     int numTrocas = o;
     int numMaquinas = maquina.size();
@@ -136,13 +117,13 @@ long pertubacao(std::vector<std::vector<Operation>> &maquina,
     return objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
 }
 
-long re_insertion(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq)
+double re_insertion(std::vector<std::vector<Operation>> &maquina,
+                    std::vector<Operation> &vetOperacoes,
+                    std::map<int, std::map<int, int>> &controleOp,
+                    std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-    long resultadoAtual = r0;
+    double r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
+    double resultadoAtual = r0;
 
     if (buscasDebugEnabled())
     {
@@ -199,7 +180,7 @@ long re_insertion(std::vector<std::vector<Operation>> &maquina,
                 maquina[m].erase(maquina[m].begin() + i);
                 maquina[m].insert(maquina[m].begin() + j, opCopia);
 
-                long resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                double resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
 
                 if (buscasDebugEnabled())
                 {
@@ -239,14 +220,14 @@ long re_insertion(std::vector<std::vector<Operation>> &maquina,
     return r0;
 }
 
-long insertion_im(std::vector<std::vector<Operation>> &maquina,
+double insertion_im(std::vector<std::vector<Operation>> &maquina,
 
                   std::vector<Operation> &vetOperacoes,
                   std::map<int, std::map<int, int>> &controleOp,
                   std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-    long resultadoAtual = r0;
+    double r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
+    double resultadoAtual = r0;
 
     if (buscasDebugEnabled())
     {
@@ -292,7 +273,7 @@ long insertion_im(std::vector<std::vector<Operation>> &maquina,
                 {
                     std::cout << "[DEBUG][ISIM] Foi pra avaliação " << std::endl;
                 }
-                long resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                double resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
                 if (buscasDebugEnabled())
                 {
                     std::cout << "[DEBUG][ISIM] Voltou da avaliação " << std::endl;
@@ -326,13 +307,13 @@ long insertion_im(std::vector<std::vector<Operation>> &maquina,
     return r0;
 }
 
-long two_swap(std::vector<std::vector<Operation>> &maquina,
-              std::vector<Operation> &vetOperacoes,
-              std::map<int, std::map<int, int>> &controleOp,
-              std::vector<double> &tardiness_maq)
+double two_swap(std::vector<std::vector<Operation>> &maquina,
+                std::vector<Operation> &vetOperacoes,
+                std::map<int, std::map<int, int>> &controleOp,
+                std::vector<double> &tardiness_maq)
 {
-    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-    long resultadoAtual = r0;
+    double r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
+    double resultadoAtual = r0;
 
     if (buscasDebugEnabled())
     {
@@ -364,7 +345,7 @@ long two_swap(std::vector<std::vector<Operation>> &maquina,
                 {
                     std::cout << "[DEBUG][2SWap] Foi avaliar " << std::endl;
                 }
-                long novoResultado = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                double novoResultado = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
                 if (buscasDebugEnabled())
                 {
                     std::cout << "[DEBUG][2SWap] Voltou da avaliação " << std::endl;

@@ -41,6 +41,12 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         return 0.0;
     }
 
+    if (objectiveDebugEnabled())
+    {
+        cout << "[DEBUG] Validando na função objetivo" << endl;
+    }
+    
+
     if (vetOperacoes.size() != o)
     {
         return INT_MAX;
@@ -169,13 +175,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
 
     int idxPorMaquina[maquina.size()] = {0};
     vector<int> esperandoPorQuem(maquina.size(), -1);
-
-    // for (int j = 0; j < max_op; ++j) // operacao
-    // {
-    // Criterio de parada vai ser todas as maquinas ja terem alocado toda as tarefas
-
     
-
     bool acabei = false;
     while (!acabei)
     {

@@ -8,13 +8,13 @@ public:
     int idOp;            // Índice da operação dentro do job
     int toolSetId;       // Identificador do conjunto de ferramentas
     int toolSetSize;     // Tamanho do conjunto de ferramentas
-    int processingTime;  // Tempo de processamento
-    int dueDate;         // Data de entrega
-    int releaseTime;     // Data de liberação
+    double processingTime;  // Tempo de processamento
+    double dueDate;         // Data de entrega
+    double releaseTime;     // Data de liberação
     bool isProcessed;    // Indica se a operação já foi processada
 
     Operation();
-    Operation(int id, int idJob, int idOp, int toolSetId, int toolSetSize, int processingTime, int dueDate, int releaseTime, bool isProcessed = false);
+    Operation(int id, int idJob, int idOp, int toolSetId, int toolSetSize, double processingTime, double dueDate, double releaseTime, bool isProcessed = false);
 };
 
 #endif // OPERATION_H

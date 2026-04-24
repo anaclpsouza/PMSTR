@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <climits>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -11,7 +12,7 @@
 #include <chrono>
 #include <deque>
 #include <random>
-#include "Buscas.cpp"
+#include "Buscas.h"
 
 using namespace std;
 std::ofstream fileSolution;
