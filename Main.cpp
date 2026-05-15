@@ -43,7 +43,7 @@ void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::
     out << endl;
 }
 
- /* faz um aleatorio por tarefa. Ordena as Tarefas (a tarefa leva suas operações junto) aleatoriamente, e distribui um para cada máquina. Se uma tarefa foi, todas as operacoes foi. Depois que cada máquina recebeu uma, a próxima tarefa vai para a máquina com o menor completion time calculado como soma do tempo de processamento da tarefa (que é, somatorio do release time de cada operacao + tempo de processamento). Repete até que todas as tarefas tenham sido alocadas. */
+/* faz um aleatorio por tarefa. Ordena as Tarefas (a tarefa leva suas operações junto) aleatoriamente, e distribui um para cada máquina. Se uma tarefa foi, todas as operacoes foi. Depois que cada máquina recebeu uma, a próxima tarefa vai para a máquina com o menor completion time calculado como soma do tempo de processamento da tarefa (que é, somatorio do release time de cada operacao + tempo de processamento). Repete até que todas as tarefas tenham sido alocadas. */
 
 void distInicial(std::map<int, std::deque<Operation>> tarefas)
 {
@@ -105,6 +105,101 @@ void distInicial(std::map<int, std::deque<Operation>> tarefas)
 
         maquinas[melhorMaq].insert(maquinas[melhorMaq].end(), ops.begin(), ops.end());
         completionMaq[melhorMaq] += cargaTarefa(idJob);
+    }
+}
+
+void enviesadaPorRelease(std::vector<Operation> tarefas)
+{
+    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
+              {
+                  if (a.releaseTime != b.releaseTime)
+                      return a.releaseTime < b.releaseTime;
+                  if (a.idJob != b.idJob)
+                      return a.idJob < b.idJob;
+                  return a.idOp < b.idOp; });
+
+    std::vector<double> cargaProcessamento(m, 0.0);
+    std::map<int, int> maquinaPorJob;
+
+    auto menorCarga = [&]()
+    {
+        int melhorMaq = 0;
+        for (int maq = 1; maq < m; ++maq)
+        {
+            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
+            {
+                melhorMaq = maq;
+            }
+        }
+        return melhorMaq;
+    };
+
+    for (const auto &op : tarefas)
+    {
+        int maquinaEscolhida = -1;
+
+        if (op.idOp > 1)
+        {
+            auto it = maquinaPorJob.find(op.idJob);
+            if (it != maquinaPorJob.end())
+            {
+                maquinaEscolhida = it->second;
+            }
+        }
+
+        if (maquinaEscolhida < 0)
+        {
+            maquinaEscolhida = menorCarga();
+        }
+
+        maquinas[maquinaEscolhida].push_back(op);
+        cargaProcessamento[maquinaEscolhida] += op.processingTime;
+        maquinaPorJob[op.idJob] = maquinaEscolhida;
+    }
+}
+
+void enviesadaPorDueDate(std::vector<Operation> tarefas)
+{
+    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
+              { return a.dueDate < b.dueDate; });
+
+    std::vector<double> cargaProcessamento(m, 0.0);
+    std::map<int, int> maquinaPorJob;
+
+    auto menorCarga = [&]()
+    {
+        int melhorMaq = 0;
+        for (int maq = 1; maq < m; ++maq)
+        {
+            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
+            {
+                melhorMaq = maq;
+            }
+        }
+        return melhorMaq;
+    };
+
+    for (const auto &op : tarefas)
+    {
+        int maquinaEscolhida = -1;
+
+        if (op.idOp > 1)
+        {
+            auto it = maquinaPorJob.find(op.idJob);
+            if (it != maquinaPorJob.end())
+            {
+                maquinaEscolhida = it->second;
+            }
+        }
+
+        if (maquinaEscolhida < 0)
+        {
+            maquinaEscolhida = menorCarga();
+        }
+
+        maquinas[maquinaEscolhida].push_back(op);
+        cargaProcessamento[maquinaEscolhida] += op.processingTime;
+        maquinaPorJob[op.idJob] = maquinaEscolhida;
     }
 }
 
@@ -179,17 +274,40 @@ int main(int argsc, char *argv[])
         tarefas[op.idJob].push_back(op);
     }
 
+    double sol_inicial = INT_MAX;
+    std::vector<std::vector<Operation>> melhorMaquinas;
+    std::vector<double> melhorTardiness;
+
+    auto avaliarSolucaoInicial = [&](auto gerarSolucao, bool repetirAteValida)
+    {
+        double valor = INT_MAX;
+        std::vector<double> tardinessCandidato;
+
+        do
+        {
+            maquinas.clear();
+            maquinas.resize(m);
+            gerarSolucao();
+            valor = objectiveFunction(maquinas, vetOperacao, controleOp, tardinessCandidato);
+        } while (repetirAteValida && valor == INT_MAX);
+
+        if (valor != INT_MAX && valor < sol_inicial)
+        {
+            sol_inicial = valor;
+            melhorMaquinas = maquinas;
+            melhorTardiness = tardinessCandidato;
+        }
+    };
+
+    avaliarSolucaoInicial([&]() { distInicial(tarefas); }, true);
+    avaliarSolucaoInicial([&]() { enviesadaPorRelease(vetOperacao); }, false);
+    avaliarSolucaoInicial([&]() { enviesadaPorDueDate(vetOperacao); }, false);
+
+    maquinas = melhorMaquinas;
+    tardiness_maq = melhorTardiness;
+
     high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
-   
-    double sol_inicial = INT_MAX;
-    while (sol_inicial == INT_MAX)
-    {
-        maquinas.clear();
-        maquinas.resize(m);
-        distInicial(tarefas);
-        sol_inicial = objectiveFunction(maquinas, vetOperacao, controleOp, tardiness_maq);
-    }
     double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq, o);
 
     high_resolution_clock::time_point t2 = high_resolution_clock::now();

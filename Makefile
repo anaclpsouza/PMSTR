@@ -1,9 +1,9 @@
 CXX := g++
-CXXFLAGS := -g
+CXXFLAGS := -O3 -march=native -std=c++20
 
 .PHONY: all clean
 
-all: Main Run TesteBuscasSequenciais
+all: Main Run 
 
 Main: Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.h Operation.h Buscas.h
 	$(CXX) $(CXXFLAGS) Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp -o Main
@@ -11,8 +11,6 @@ Main: Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.
 Run: Run.cpp
 	$(CXX) $(CXXFLAGS) Run.cpp -o Run
 
-TesteBuscasSequenciais: TesteBuscasSequenciais.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.h Operation.h Buscas.h
-	$(CXX) $(CXXFLAGS) TesteBuscasSequenciais.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp -o TesteBuscasSequenciais
 
 clean:
-	rm -f Main Run TesteBuscasSequenciais
+	rm -f Main Run 
