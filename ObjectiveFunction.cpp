@@ -197,7 +197,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
         if (acabei)
         {
-            cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
+            if (objectiveDebugEnabled()) cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
             break;
         }
 

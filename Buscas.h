@@ -1,11 +1,15 @@
 #ifndef BUSCAS_H
 #define BUSCAS_H
 
+#include <chrono>
 #include <map>
 #include <vector>
-
 #include "ObjectiveFunction.h"
 #include "Operation.h"
+
+using namespace std::chrono;
+
+extern high_resolution_clock::time_point t2;
 
 double pertubacao(std::vector<std::vector<Operation>> &maquina,
                   std::vector<Operation> &vetOperacoes,

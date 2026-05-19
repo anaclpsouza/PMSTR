@@ -22,6 +22,8 @@
 using namespace std;
 std::random_device rd;
 std::mt19937 rng(rd());
+using namespace std::chrono;
+high_resolution_clock::time_point t2;
 
 static inline bool buscasDebugEnabled()
 {
@@ -44,47 +46,132 @@ double ILS(std::vector<std::vector<Operation>> &maquina,
            std::map<int, std::map<int, int>> &controleOp,
            std::vector<double> &tardiness_maq, int totalOperacoes)
 {
+    if (buscasDebugEnabled())
+    {
+        std::cout << "[DEBUG][ILS] Iniciando ILS com " << maquina.size()
+                  << " maquinas e " << totalOperacoes << " operacoes" << std::endl;
+    }
+
     // intensificação inicial
     double s = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
     s = insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
     s = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
-    
+
     double melhor = s;
-    std::vector<std::vector<Operation>> melhor_sol = maquina; 
-    std::vector<std::vector<Operation>> sol_base = maquina;   
+    std::vector<std::vector<Operation>> melhor_sol = maquina;
+    std::vector<std::vector<Operation>> sol_base = maquina;
 
     int o = std::max(1, static_cast<int>(std::ceil(totalOperacoes * 0.10)));
 
-    for (size_t i = 0; i < 500; i++)
+    if (buscasDebugEnabled())
     {
-        maquina = sol_base;
-        
-        // Perturbação
-        pertubacao(maquina, vetOperacoes, controleOp, tardiness_maq, o);
-        
-        // Busca Local (Intensificação)
-        re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
-        insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
-        double s_candidato = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
+        std::cout << "[DEBUG][ILS] Solucao inicial intensificada=" << s
+                  << " | perturbacao=" << o << std::endl;
+    }
 
-        // Atualiza o Melhor Global 
-        if (s_candidato < melhor) {
-            melhor = s_candidato;
-            melhor_sol = maquina;
-            
-            if (buscasDebugEnabled())
-                std::cout << "[ILS] Novo recorde: " << melhor << std::endl;
+    for (size_t i = 0; i < 100; i++)
+    {
+        if (buscasDebugEnabled())
+        {
+            std::cout << "[DEBUG][ILS] Iteracao " << (i + 1)
+                      << " | melhor=" << melhor
+                      << " | base=" << s << std::endl;
         }
 
-        // Critério de Aceitação 
-        if (s_candidato <= (melhor * 1.10)) {
+        t2 = high_resolution_clock::now();
+
+        maquina = sol_base;
+
+        // Perturbação
+        double s_atual = pertubacao(maquina, vetOperacoes, controleOp, tardiness_maq, o);
+
+        if (buscasDebugEnabled())
+        {
+            std::cout << "[DEBUG][ILS] Depois da perturbacao: " << s_atual << std::endl;
+        }
+
+        // Busca Local (Intensificação)
+
+        double s_candidato = s_atual;
+
+        int qual = 0;
+        while (qual < 3)
+        {
+            if (buscasDebugEnabled())
+            {
+                std::cout << "[DEBUG][ILS] Intensificacao " << qual
+                          << " com objetivo atual " << s_candidato << std::endl;
+            }
+
+            if (qual == 0)
+            {
+                s_candidato = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
+            }
+            else if (qual == 1)
+            {
+                s_candidato = insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
+            }
+            else if (qual == 2)
+            {
+                s_candidato = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
+            }
+
+            if (s_candidato < s_atual)
+            {
+                if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][ILS] Intensificacao melhorou de " << s_atual
+                              << " para " << s_candidato << std::endl;
+                }
+                s_atual = s_candidato;
+                qual = 0;
+            }
+            else
+            {
+                if (buscasDebugEnabled())
+                {
+                    std::cout << "[DEBUG][ILS] Intensificacao nao melhorou. Avancando para a proxima estrategia." << std::endl;
+                }
+                qual++;
+            }
+        }
+
+        if (s_atual < melhor)
+        {
+            melhor = s_atual;
+            melhor_sol = maquina;
+
+            if (buscasDebugEnabled())
+            {
+                std::cout << "[DEBUG][ILS] Novo melhor global: " << melhor << std::endl;
+            }
+        }
+
+        // Critério de Aceitação
+        if (s_candidato <= (melhor * 1.10))
+        {
             sol_base = maquina;
             s = s_candidato;
+
+            if (buscasDebugEnabled())
+            {
+                std::cout << "[DEBUG][ILS] Solucao aceita como nova base: " << s_candidato << std::endl;
+            }
+        }
+        else if (buscasDebugEnabled())
+        {
+            std::cout << "[DEBUG][ILS] Solucao rejeitada para base: " << s_candidato
+                      << " | limiar=" << (melhor * 1.10) << std::endl;
         }
         // Se não entrar no if acima, sol_base continua sendo a anterior
     }
 
     maquina = melhor_sol;
+
+    if (buscasDebugEnabled())
+    {
+        std::cout << "[DEBUG][ILS] Encerrando ILS com melhor=" << melhor << std::endl;
+    }
     return melhor;
 }
 
@@ -97,11 +184,13 @@ double pertubacao(std::vector<std::vector<Operation>> &maquina,
     int numTrocas = o;
     int numMaquinas = maquina.size();
 
-    for (int k = 0; k < numTrocas; ++k) {
+    for (int k = 0; k < numTrocas; ++k)
+    {
         int m1 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
         int m2 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
 
-        if (m1 == m2 || maquina[m1].empty() || maquina[m2].empty()) {
+        if (m1 == m2 || maquina[m1].empty() || maquina[m2].empty())
+        {
             k--; // Tenta novamente
             continue;
         }
@@ -222,9 +311,9 @@ double re_insertion(std::vector<std::vector<Operation>> &maquina,
 
 double insertion_im(std::vector<std::vector<Operation>> &maquina,
 
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq)
+                    std::vector<Operation> &vetOperacoes,
+                    std::map<int, std::map<int, int>> &controleOp,
+                    std::vector<double> &tardiness_maq)
 {
     double r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
     double resultadoAtual = r0;

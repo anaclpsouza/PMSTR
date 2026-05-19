@@ -19,7 +19,12 @@ std::ofstream fileSolution;
 int m, o, t, c;
 std::vector<std::vector<Operation>> maquinas;
 std::map<int, double> tempoMaq;
+extern high_resolution_clock::time_point t2;
+
 using namespace std::chrono;
+
+std::chrono::high_resolution_clock::duration tempo_execucao;
+high_resolution_clock::time_point t1;
 
 void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
 {
@@ -266,6 +271,8 @@ int main(int argsc, char *argv[])
         }
     }
 
+    t1 = high_resolution_clock::now();
+
     std::map<int, double> tempo_final;
     std::vector<double> tardiness_maq;
     std::map<int, std::deque<Operation>> tarefas;
@@ -306,13 +313,10 @@ int main(int argsc, char *argv[])
     maquinas = melhorMaquinas;
     tardiness_maq = melhorTardiness;
 
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq, o);
 
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
-
-    auto tempo_execucao = duration_cast<duration<double>>(t2 - t1);
+    tempo_execucao = t2 - t1;
 
     fileSolution
         << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
