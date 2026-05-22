@@ -23,7 +23,9 @@ using namespace std;
 std::random_device rd;
 std::mt19937 rng(rd());
 using namespace std::chrono;
+high_resolution_clock::time_point t1;
 high_resolution_clock::time_point t2;
+std::chrono::high_resolution_clock::duration tempo_execucao;
 
 static inline bool buscasDebugEnabled()
 {
@@ -71,14 +73,24 @@ double ILS(std::vector<std::vector<Operation>> &maquina,
 
     for (size_t i = 0; i < 100; i++)
     {
+        t2 = high_resolution_clock::now();
+        tempo_execucao = t2 - t1;
+
+        if (tempo_execucao >= std::chrono::hours(2))
+        {
+            if (buscasDebugEnabled())
+            {
+                std::cout << "[DEBUG][ILS] Limite de 2 horas atingido. Encerrando ILS." << std::endl;
+            }
+            break;
+        }
+
         if (buscasDebugEnabled())
         {
             std::cout << "[DEBUG][ILS] Iteracao " << (i + 1)
                       << " | melhor=" << melhor
                       << " | base=" << s << std::endl;
         }
-
-        t2 = high_resolution_clock::now();
 
         maquina = sol_base;
 

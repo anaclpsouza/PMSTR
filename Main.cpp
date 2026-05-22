@@ -23,9 +23,6 @@ extern high_resolution_clock::time_point t2;
 
 using namespace std::chrono;
 
-std::chrono::high_resolution_clock::duration tempo_execucao;
-high_resolution_clock::time_point t1;
-
 void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
 {
     std::ofstream out(caminhoArquivo, std::ios::app);
@@ -316,7 +313,7 @@ int main(int argsc, char *argv[])
 
     double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq, o);
 
-    tempo_execucao = t2 - t1;
+    tempo_execucao = high_resolution_clock::now() - t1;
 
     fileSolution
         << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
