@@ -63,7 +63,7 @@ double ILS(std::vector<std::vector<Operation>> &maquina,
     std::vector<std::vector<Operation>> melhor_sol = maquina;
     std::vector<std::vector<Operation>> sol_base = maquina;
 
-    int o = std::max(1, static_cast<int>(std::ceil(totalOperacoes * 0.10)));
+    int o = std::max(2, static_cast<int>(std::ceil(totalOperacoes * 0.15)));
 
     if (buscasDebugEnabled())
     {
