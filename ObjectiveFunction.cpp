@@ -16,23 +16,27 @@ static inline bool objectiveDebugEnabled()
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
-int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina) {
-   for (int i = 0; i < maquina.size(); ++i) {
-        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob](const Operation& op) {
-            return op.idJob == idJob;
-        });
+int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina)
+{
+    for (int i = 0; i < maquina.size(); ++i)
+    {
+        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob](const Operation &op)
+                               { return op.idJob == idJob; });
 
-        if (it != maquina[i].end()) {
+        if (it != maquina[i].end())
+        {
             return i;
         }
-   }
-   return -1;
+    }
+    return -1;
 }
 
 double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                          const std::vector<Operation> &vetOperacoes,
                          const std::map<int, std::map<int, int>> &controleOp,
-                         std::vector<double> &tardiness_maq)
+                         std::vector<double> &tardiness_maq,
+                         std::vector<std::string> *details,
+                         std::vector<std::pair<int, Operation>> *out_espera)
 {
     if (maquina.empty())
     {
@@ -45,7 +49,6 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     {
         cout << "[DEBUG] Validando na função objetivo" << endl;
     }
-    
 
     if (vetOperacoes.size() != o)
     {
@@ -73,7 +76,8 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     int setups = 0;
     double tardiness = 0.0;
     vector<double> tempo(m, 0.0);
-    tardiness_maq.resize(m, 0.0);
+    //tardiness_maq.resize(m, 0.0);
+    tardiness_maq.assign(m, 0.0);
 
     vector<int> u(m, 0); // quantidade de ferramentas atualmente carregadas
     vector<vector<int>> carregados(m, vector<int>(t, 0));
@@ -158,7 +162,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     {
         for (int i = 0; i < maquina[j].size(); i++) // operacao
         {
-            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize < c)
+            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize <= c)
             {
                 u[j] += maquina[j][i].toolSetSize;
                 carregados[j][maquina[j][i].toolSetId] = 1;
@@ -175,7 +179,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
 
     int idxPorMaquina[maquina.size()] = {0};
     vector<int> esperandoPorQuem(maquina.size(), -1);
-    
+
     bool acabei = false;
     while (!acabei)
     {
@@ -197,7 +201,8 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
         if (acabei)
         {
-            if (objectiveDebugEnabled()) cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
+            if (objectiveDebugEnabled())
+                cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
             break;
         }
 
@@ -225,24 +230,35 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                     }
                     esperandoPorQuem[i] = maquinaPai(maquina[i][j].idJob, maquina);
                     vector<int> estado(esperandoPorQuem.size(), 0);
-                    
-                    for (int z = 0; z < esperandoPorQuem.size(); z++){
-                        if (estado[z] ==0){
+
+                    if (out_espera != nullptr)
+                    {
+                        out_espera->push_back(std::make_pair(i, maquina[i][j]));
+                    }
+
+                    for (int z = 0; z < esperandoPorQuem.size(); z++)
+                    {
+                        if (estado[z] == 0)
+                        {
                             int atual = z;
-                            while (atual != -1 && estado[atual]!=2){
-                                if (estado[atual] == 1){
-                                    if (objectiveDebugEnabled()) cout << "[DEBUG] ACHEI UM CICLO E INVALIDEI A SOLUCAO" << endl;
+                            while (atual != -1 && estado[atual] != 2)
+                            {
+                                if (estado[atual] == 1)
+                                {
+                                    if (objectiveDebugEnabled())
+                                        cout << "[DEBUG] ACHEI UM CICLO E INVALIDEI A SOLUCAO" << endl;
                                     return INT_MAX;
                                 }
                                 estado[atual] = 1;
                                 atual = esperandoPorQuem[atual];
                             }
                             atual = z;
-                            while(atual != -1 && estado[atual]==1){
+                            while (atual != -1 && estado[atual] == 1)
+                            {
                                 estado[atual] = 2;
                                 atual = esperandoPorQuem[atual];
                             }
-                        }    
+                        }
                     }
 
                     continue;
