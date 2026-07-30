@@ -1,0 +1,425 @@
+
+#include <iostream>
+#include <climits>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <algorithm>
+#include <map>
+#include "Operation.h"
+#include "ObjectiveFunction.h"
+#include <chrono>
+#include <deque>
+#include <random>
+#include <filesystem>
+#include <iomanip>
+#include "Buscas.h"
+#include "Configuracao.h"
+
+using namespace std;
+std::ofstream fileSolution;
+int m, o, t, c;
+std::vector<std::vector<Operation>> maquinas;
+std::map<int, double> tempoMaq;
+extern high_resolution_clock::time_point t2;
+
+using namespace std::chrono;
+
+void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
+{
+    std::ofstream out(caminhoArquivo, std::ios::app);
+    if (!out.is_open())
+    {
+        return;
+    }
+
+    out << "Execucao: " << execucao << endl;
+    out << "Instancia: " << nomeInstancia << endl;
+    for (size_t maq = 0; maq < maquinas.size(); ++maq)
+    {
+        out << "M" << (maq + 1) << ":";
+        for (const auto &op : maquinas[maq])
+        {
+            out << " J" << op.idJob << "-O" << op.idOp;
+        }
+        out << endl;
+    }
+    out << endl;
+}
+
+/* faz um aleatorio por tarefa. Ordena as Tarefas (a tarefa leva suas operações junto) aleatoriamente, e distribui um para cada máquina. Se uma tarefa foi, todas as operacoes foi. Depois que cada máquina recebeu uma, a próxima tarefa vai para a máquina com o menor completion time calculado como soma do tempo de processamento da tarefa (que é, somatorio do release time de cada operacao + tempo de processamento). Repete até que todas as tarefas tenham sido alocadas. */
+
+void distInicial(std::map<int, std::deque<Operation>> tarefas)
+{
+    std::vector<int> tarefasDisponiveis;
+
+    for (auto const &[id, fila] : tarefas)
+    {
+        tarefasDisponiveis.push_back(id);
+    }
+
+    if (tarefasDisponiveis.empty() || m <= 0)
+    {
+        return;
+    }
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(tarefasDisponiveis.begin(), tarefasDisponiveis.end(), g);
+
+    auto cargaTarefa = [&](int idJob)
+    {
+        double soma = 0.0;
+        const auto &ops = tarefas[idJob];
+
+        for (const auto &op : ops)
+        {
+            soma += op.releaseTime + op.processingTime;
+        }
+
+        return soma;
+    };
+
+    std::vector<double> completionMaq(m, 0.0);
+    size_t idxTarefa = 0;
+
+    size_t tarefasIniciais = std::min((size_t)m, tarefasDisponiveis.size());
+    for (size_t maq = 0; maq < tarefasIniciais; ++maq)
+    {
+        int idJob = tarefasDisponiveis[idxTarefa++];
+        auto &ops = tarefas[idJob];
+
+        maquinas[maq].insert(maquinas[maq].end(), ops.begin(), ops.end());
+        completionMaq[maq] += cargaTarefa(idJob);
+    }
+
+    while (idxTarefa < tarefasDisponiveis.size())
+    {
+        int melhorMaq = 0;
+        for (int maq = 1; maq < m; ++maq)
+        {
+            if (completionMaq[maq] < completionMaq[melhorMaq])
+            {
+                melhorMaq = maq;
+            }
+        }
+
+        int idJob = tarefasDisponiveis[idxTarefa++];
+        auto &ops = tarefas[idJob];
+
+        maquinas[melhorMaq].insert(maquinas[melhorMaq].end(), ops.begin(), ops.end());
+        completionMaq[melhorMaq] += cargaTarefa(idJob);
+    }
+}
+
+void enviesadaPorRelease(std::vector<Operation> tarefas)
+{
+    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
+              {
+                  if (a.releaseTime != b.releaseTime)
+                      return a.releaseTime < b.releaseTime;
+                  if (a.idJob != b.idJob)
+                      return a.idJob < b.idJob;
+                  return a.idOp < b.idOp; });
+
+    std::vector<double> cargaProcessamento(m, 0.0);
+    std::map<int, int> maquinaPorJob;
+
+    auto menorCarga = [&]()
+    {
+        int melhorMaq = 0;
+        for (int maq = 1; maq < m; ++maq)
+        {
+            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
+            {
+                melhorMaq = maq;
+            }
+        }
+        return melhorMaq;
+    };
+
+    for (const auto &op : tarefas)
+    {
+        int maquinaEscolhida = -1;
+
+        if (op.idOp > 1)
+        {
+            auto it = maquinaPorJob.find(op.idJob);
+            if (it != maquinaPorJob.end())
+            {
+                maquinaEscolhida = it->second;
+            }
+        }
+
+        if (maquinaEscolhida < 0)
+        {
+            maquinaEscolhida = menorCarga();
+        }
+
+        maquinas[maquinaEscolhida].push_back(op);
+        cargaProcessamento[maquinaEscolhida] += op.processingTime;
+        maquinaPorJob[op.idJob] = maquinaEscolhida;
+    }
+}
+
+void enviesadaPorDueDate(std::vector<Operation> tarefas)
+{
+    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
+              { return a.dueDate < b.dueDate; });
+
+    std::vector<double> cargaProcessamento(m, 0.0);
+    std::map<int, int> maquinaPorJob;
+
+    auto menorCarga = [&]()
+    {
+        int melhorMaq = 0;
+        for (int maq = 1; maq < m; ++maq)
+        {
+            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
+            {
+                melhorMaq = maq;
+            }
+        }
+        return melhorMaq;
+    };
+
+    for (const auto &op : tarefas)
+    {
+        int maquinaEscolhida = -1;
+
+        if (op.idOp > 1)
+        {
+            auto it = maquinaPorJob.find(op.idJob);
+            if (it != maquinaPorJob.end())
+            {
+                maquinaEscolhida = it->second;
+            }
+        }
+
+        if (maquinaEscolhida < 0)
+        {
+            maquinaEscolhida = menorCarga();
+        }
+
+        maquinas[maquinaEscolhida].push_back(op);
+        cargaProcessamento[maquinaEscolhida] += op.processingTime;
+        maquinaPorJob[op.idJob] = maquinaEscolhida;
+    }
+}
+
+int parseHeaderValue(string line)
+{
+    replace(line.begin(), line.end(), ',', ' ');
+    stringstream ss(line);
+    ss.imbue(locale("C"));
+    string key;
+    int value;
+    ss >> key >> value;
+    return value;
+}
+
+std::string criarCaminhoLog(const std::string &caminhoSaida)
+{
+    namespace fs = std::filesystem;
+
+    const fs::path arquivoSaida(caminhoSaida);
+    fs::path diretorio = arquivoSaida.parent_path();
+    if (diretorio.empty())
+        diretorio = ".";
+
+    diretorio /= "logs";
+    fs::create_directories(diretorio);
+
+    std::string nome = arquivoSaida.stem().string();
+    if (nome.empty())
+        nome = arquivoSaida.filename().string();
+    if (nome.empty())
+        nome = "execucao";
+
+    return (diretorio / (nome + ".log")).string();
+}
+
+int main(int argsc, char *argv[])
+{
+    if (argsc < 2)
+    {
+        std::cerr << "Arquivo de saida nao informado." << std::endl;
+        return 1;
+    }
+
+    ios_base::sync_with_stdio(false);
+    cin.imbue(locale("C"));
+
+    string line;
+
+    if (getline(cin, line))
+        o = parseHeaderValue(line);
+    if (getline(cin, line))
+        m = parseHeaderValue(line);
+    if (getline(cin, line))
+        t = parseHeaderValue(line);
+    if (getline(cin, line))
+        c = parseHeaderValue(line);
+
+    getline(cin, line);
+    getline(cin, line);
+
+    std::vector<Operation> vetOperacao;
+    int i = 0;
+    std::map<int, std::map<int, int>> controleOp;
+
+    fileSolution.open(argv[1]);
+    if (!fileSolution.is_open())
+    {
+        std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
+        return 1;
+    }
+
+    std::string caminhoLog;
+    try
+    {
+        caminhoLog = criarCaminhoLog(argv[1]);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Nao foi possivel preparar o diretorio de logs: "
+                  << e.what() << std::endl;
+        return 1;
+    }
+
+    std::ofstream logExecucao(caminhoLog, std::ios::trunc);
+    if (!logExecucao.is_open())
+    {
+        std::cerr << "Nao foi possivel criar o arquivo de log: "
+                  << caminhoLog << std::endl;
+        return 1;
+    }
+    logExecucao.imbue(locale("C"));
+    logExecucao << std::fixed << std::setprecision(6);
+
+    controleOp.clear();
+
+    while (getline(cin, line) && !line.empty())
+    {
+        replace(line.begin(), line.end(), ',', ' ');
+        stringstream ss(line);
+        ss.imbue(locale("C"));
+
+        int idJob, idOp, toolSetId, toolSetSize;
+        double releaseTime, processingTime, dueDate;
+
+        ss >> idJob >> idOp >> releaseTime >> processingTime >> dueDate >> toolSetId >> toolSetSize;
+
+        if (ss)
+        {
+            Operation op(i, idJob, idOp, toolSetId - 1, toolSetSize, processingTime, dueDate, releaseTime);
+            vetOperacao.push_back(op);
+            controleOp[idJob][idOp] = 0;
+            i++;
+        }
+    }
+
+    t1 = high_resolution_clock::now();
+
+    std::map<int, double> tempo_final;
+    std::vector<double> tardiness_maq;
+    std::map<int, std::deque<Operation>> tarefas;
+    for (const auto &op : vetOperacao)
+    {
+        tarefas[op.idJob].push_back(op);
+    }
+
+    double sol_inicial = INT_MAX;
+    std::vector<std::vector<Operation>> melhorMaquinas;
+    std::vector<double> melhorTardiness;
+
+    auto avaliarSolucaoInicial = [&](auto gerarSolucao, bool repetirAteValida)
+    {
+        double valor = INT_MAX;
+        std::vector<double> tardinessCandidato;
+
+        do
+        {
+            maquinas.clear();
+            maquinas.resize(m);
+            gerarSolucao();
+            valor = objectiveFunction(maquinas, vetOperacao, controleOp, tardinessCandidato);
+        } while (repetirAteValida && valor == INT_MAX);
+
+        if (valor != INT_MAX && valor < sol_inicial)
+        {
+            sol_inicial = valor;
+            melhorMaquinas = maquinas;
+            melhorTardiness = tardinessCandidato;
+        }
+    };
+
+    avaliarSolucaoInicial([&]() { distInicial(tarefas); }, true);
+    avaliarSolucaoInicial([&]() { enviesadaPorRelease(vetOperacao); }, false);
+    avaliarSolucaoInicial([&]() { enviesadaPorDueDate(vetOperacao); }, false);
+
+    maquinas = melhorMaquinas;
+    tardiness_maq = melhorTardiness;
+
+
+    logExecucao << "[CONFIGURACAO]\n";
+    logExecucao << "re_insertion;" << Configuracao::RE_INSERTION << '\n';
+    logExecucao << "insertion_im;" << Configuracao::INSERTION_IM << '\n';
+    logExecucao << "two_swap;" << Configuracao::TWO_SWAP << '\n';
+    logExecucao << "limite_iteracoes_sem_melhoria;"
+                << Configuracao::LIMITE_ITERACOES_SEM_MELHORIA << '\n';
+    logExecucao << "percentual_perturbacao;"
+                << Configuracao::PERCENTUAL_PERTURBACAO << '\n';
+    logExecucao << "limite_tempo_horas;"
+                << Configuracao::LIMITE_TEMPO_HORAS << '\n';
+    logExecucao << "operacoes;" << o << '\n';
+    logExecucao << "maquinas;" << m << '\n';
+    logExecucao << "ferramentas;" << t << '\n';
+    logExecucao << "capacidade;" << c << '\n';
+    logExecucao << "solucao_inicial;" << sol_inicial << '\n';
+
+    double ils = ILS(Configuracao::RE_INSERTION,
+                     Configuracao::INSERTION_IM,
+                     Configuracao::TWO_SWAP,
+                     Configuracao::LIMITE_ITERACOES_SEM_MELHORIA,
+                     Configuracao::PERCENTUAL_PERTURBACAO,
+                     Configuracao::LIMITE_TEMPO_HORAS,
+                     maquinas,
+                     vetOperacao,
+                     controleOp,
+                     tardiness_maq,
+                     o,
+                     &logExecucao);
+
+    tempo_execucao = high_resolution_clock::now() - t1;
+    const double tempoExecucaoSegundos = duration<double>(tempo_execucao).count();
+
+    fileSolution
+        << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
+        << m << "M" << o << ","
+        << o << ","
+        << m << ","
+        << t << ","
+        << c << ","
+        << sol_inicial << ","
+        << ils << ","
+        << tempoExecucaoSegundos << endl;
+
+    logExecucao << "\n[RESULTADO_EXECUCAO]\n";
+    logExecucao << "solucao_inicial;" << sol_inicial << '\n';
+    logExecucao << "melhor_solucao_final;" << ils << '\n';
+    logExecucao << "tempo_execucao_segundos;" << tempoExecucaoSegundos << '\n';
+
+    fileSolution.close();
+    logExecucao.close();
+
+    std::cout << "Log salvo em: " << caminhoLog << std::endl;
+
+    if (argsc >= 5)
+    {
+        escreverMatrizFinalCompilada(argv[2], argv[3], argv[4]);
+    }
+
+    return 0;
+}
