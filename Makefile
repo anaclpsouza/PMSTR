@@ -5,7 +5,7 @@ CXXFLAGS := -O3 -march=native -std=c++20
 
 all: Main Run 
 
-Main: Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.h Operation.h Buscas.h
+Main: Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.h Operation.h Buscas.h Configuracao.h
 	$(CXX) $(CXXFLAGS) Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp -o Main
 
 Run: Run.cpp

@@ -12,7 +12,10 @@
 #include <chrono>
 #include <deque>
 #include <random>
+#include <filesystem>
+#include <iomanip>
 #include "Buscas.h"
+#include "Configuracao.h"
 
 using namespace std;
 std::ofstream fileSolution;
@@ -216,6 +219,7 @@ int parseHeaderValue(string line)
     return value;
 }
 
+
 int main(int argsc, char *argv[])
 {
     if (argsc < 2)
@@ -246,6 +250,12 @@ int main(int argsc, char *argv[])
     std::map<int, std::map<int, int>> controleOp;
 
     fileSolution.open(argv[1]);
+    if (!fileSolution.is_open())
+    {
+        std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
+        return 1;
+    }
+
     controleOp.clear();
 
     while (getline(cin, line) && !line.empty())
@@ -310,10 +320,20 @@ int main(int argsc, char *argv[])
     maquinas = melhorMaquinas;
     tardiness_maq = melhorTardiness;
 
-
-    double ils = ILS(maquinas, vetOperacao, controleOp, tardiness_maq, o);
+    double ils = ILS(Configuracao::RE_INSERTION,
+                     Configuracao::INSERTION_IM,
+                     Configuracao::TWO_SWAP,
+                     Configuracao::LIMITE_ITERACOES_SEM_MELHORIA,
+                     Configuracao::PERCENTUAL_PERTURBACAO,
+                     Configuracao::LIMITE_TEMPO_HORAS,
+                     maquinas,
+                     vetOperacao,
+                     controleOp,
+                     tardiness_maq,
+                     o);
 
     tempo_execucao = high_resolution_clock::now() - t1;
+    const double tempoExecucaoSegundos = duration<double>(tempo_execucao).count();
 
     fileSolution
         << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
@@ -324,7 +344,7 @@ int main(int argsc, char *argv[])
         << c << ","
         << sol_inicial << ","
         << ils << ","
-        << tempo_execucao.count() << endl;
+        << tempoExecucaoSegundos << endl;
 
     fileSolution.close();
 
