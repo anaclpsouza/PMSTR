@@ -219,26 +219,6 @@ int parseHeaderValue(string line)
     return value;
 }
 
-std::string criarCaminhoLog(const std::string &caminhoSaida)
-{
-    namespace fs = std::filesystem;
-
-    const fs::path arquivoSaida(caminhoSaida);
-    fs::path diretorio = arquivoSaida.parent_path();
-    if (diretorio.empty())
-        diretorio = ".";
-
-    diretorio /= "logs";
-    fs::create_directories(diretorio);
-
-    std::string nome = arquivoSaida.stem().string();
-    if (nome.empty())
-        nome = arquivoSaida.filename().string();
-    if (nome.empty())
-        nome = "execucao";
-
-    return (diretorio / (nome + ".log")).string();
-}
 
 int main(int argsc, char *argv[])
 {
@@ -275,28 +255,6 @@ int main(int argsc, char *argv[])
         std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
         return 1;
     }
-
-    std::string caminhoLog;
-    try
-    {
-        caminhoLog = criarCaminhoLog(argv[1]);
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Nao foi possivel preparar o diretorio de logs: "
-                  << e.what() << std::endl;
-        return 1;
-    }
-
-    std::ofstream logExecucao(caminhoLog, std::ios::trunc);
-    if (!logExecucao.is_open())
-    {
-        std::cerr << "Nao foi possivel criar o arquivo de log: "
-                  << caminhoLog << std::endl;
-        return 1;
-    }
-    logExecucao.imbue(locale("C"));
-    logExecucao << std::fixed << std::setprecision(6);
 
     controleOp.clear();
 
@@ -362,23 +320,6 @@ int main(int argsc, char *argv[])
     maquinas = melhorMaquinas;
     tardiness_maq = melhorTardiness;
 
-
-    logExecucao << "[CONFIGURACAO]\n";
-    logExecucao << "re_insertion;" << Configuracao::RE_INSERTION << '\n';
-    logExecucao << "insertion_im;" << Configuracao::INSERTION_IM << '\n';
-    logExecucao << "two_swap;" << Configuracao::TWO_SWAP << '\n';
-    logExecucao << "limite_iteracoes_sem_melhoria;"
-                << Configuracao::LIMITE_ITERACOES_SEM_MELHORIA << '\n';
-    logExecucao << "percentual_perturbacao;"
-                << Configuracao::PERCENTUAL_PERTURBACAO << '\n';
-    logExecucao << "limite_tempo_horas;"
-                << Configuracao::LIMITE_TEMPO_HORAS << '\n';
-    logExecucao << "operacoes;" << o << '\n';
-    logExecucao << "maquinas;" << m << '\n';
-    logExecucao << "ferramentas;" << t << '\n';
-    logExecucao << "capacidade;" << c << '\n';
-    logExecucao << "solucao_inicial;" << sol_inicial << '\n';
-
     double ils = ILS(Configuracao::RE_INSERTION,
                      Configuracao::INSERTION_IM,
                      Configuracao::TWO_SWAP,
@@ -389,8 +330,7 @@ int main(int argsc, char *argv[])
                      vetOperacao,
                      controleOp,
                      tardiness_maq,
-                     o,
-                     &logExecucao);
+                     o);
 
     tempo_execucao = high_resolution_clock::now() - t1;
     const double tempoExecucaoSegundos = duration<double>(tempo_execucao).count();
@@ -406,15 +346,7 @@ int main(int argsc, char *argv[])
         << ils << ","
         << tempoExecucaoSegundos << endl;
 
-    logExecucao << "\n[RESULTADO_EXECUCAO]\n";
-    logExecucao << "solucao_inicial;" << sol_inicial << '\n';
-    logExecucao << "melhor_solucao_final;" << ils << '\n';
-    logExecucao << "tempo_execucao_segundos;" << tempoExecucaoSegundos << '\n';
-
     fileSolution.close();
-    logExecucao.close();
-
-    std::cout << "Log salvo em: " << caminhoLog << std::endl;
 
     if (argsc >= 5)
     {

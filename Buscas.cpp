@@ -54,157 +54,28 @@ double ILS(int usarReInsertion,
            std::vector<Operation> &vetOperacoes,
            std::map<int, std::map<int, int>> &controleOp,
            std::vector<double> &tardiness_maq,
-           int totalOperacoes,
-           std::ostream *logExecucao)
+           int totalOperacoes)
 {
-    struct EstatisticaBusca
-    {
-        const char *nome;
-        long long chamadas = 0;
-        long long resultadosValidos = 0;
-        long long retornosInvalidos = 0;
-        long long recuperacoesDeSolucaoInvalida = 0;
-        long long chamadasComparaveis = 0;
-        long long chamadasComMelhoria = 0;
-        double somaValoresRetornadosValidos = 0.0;
-        double somaMelhorias = 0.0;
-        double somaMelhoriasPositivas = 0.0;
-
-        static bool valorValido(double valor)
-        {
-            return std::isfinite(valor) && valor < static_cast<double>(INT_MAX);
-        }
-
-        void registrar(double antes, double depois)
-        {
-            ++chamadas;
-
-            const bool antesValido = valorValido(antes);
-            const bool depoisValido = valorValido(depois);
-
-            if (depoisValido)
-            {
-                ++resultadosValidos;
-                somaValoresRetornadosValidos += depois;
-            }
-            else
-            {
-                ++retornosInvalidos;
-            }
-
-            if (!antesValido && depoisValido)
-                ++recuperacoesDeSolucaoInvalida;
-
-            // INT_MAX nao entra nas medias.
-            if (antesValido && depoisValido)
-            {
-                ++chamadasComparaveis;
-                const double melhoria = std::max(0.0, antes - depois);
-                somaMelhorias += melhoria;
-
-                if (melhoria > 0.0)
-                {
-                    ++chamadasComMelhoria;
-                    somaMelhoriasPositivas += melhoria;
-                }
-            }
-        }
-
-        double mediaValorRetornado() const
-        {
-            return resultadosValidos == 0
-                       ? 0.0
-                       : somaValoresRetornadosValidos / resultadosValidos;
-        }
-
-        double mediaMelhoriaPorChamadaComparavel() const
-        {
-            return chamadasComparaveis == 0
-                       ? 0.0
-                       : somaMelhorias / chamadasComparaveis;
-        }
-
-        double mediaMelhoriaQuandoMelhora() const
-        {
-            return chamadasComMelhoria == 0
-                       ? 0.0
-                       : somaMelhoriasPositivas / chamadasComMelhoria;
-        }
-    };
-
-    struct RegistroBusca
-    {
-        int iteracao;
-        std::string fase;
-        std::string busca;
-        double valorAntes;
-        double valorDepois;
-        double melhoriaComparavel;
-        bool antesValido;
-        bool depoisValido;
-        bool recuperouSolucaoInvalida;
-    };
-
-    struct RegistroIteracao
-    {
-        int iteracao;
-        double valorBaseInicio;
-        double aposPerturbacao;
-        double aposBuscas;
-        double melhorGlobal;
-        bool melhorouGlobal;
-        int semMelhoriaConsecutivas;
-        bool aceitaComoBase;
-    };
-
-    EstatisticaBusca estatReInsertion{"re_insertion"};
-    EstatisticaBusca estatInsertionIm{"insertion_im"};
-    EstatisticaBusca estatTwoSwap{"two_swap"};
-    std::vector<RegistroBusca> registrosBuscas;
-    std::vector<RegistroIteracao> registrosIteracoes;
-
     auto executarBusca = [&](int tipo,
                              double valorAntes,
                              int iteracao,
                              const char *fase)
     {
         double valorDepois = valorAntes;
-        EstatisticaBusca *estatistica = nullptr;
 
         if (tipo == 0)
         {
             valorDepois = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
-            estatistica = &estatReInsertion;
         }
         else if (tipo == 1)
         {
             valorDepois = insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
-            estatistica = &estatInsertionIm;
         }
         else
         {
             valorDepois = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
-            estatistica = &estatTwoSwap;
         }
 
-        estatistica->registrar(valorAntes, valorDepois);
-
-        const bool antesValido = EstatisticaBusca::valorValido(valorAntes);
-        const bool depoisValido = EstatisticaBusca::valorValido(valorDepois);
-        const double melhoriaComparavel =
-            (antesValido && depoisValido)
-                ? std::max(0.0, valorAntes - valorDepois)
-                : 0.0;
-
-        registrosBuscas.push_back({iteracao,
-                                   fase,
-                                   estatistica->nome,
-                                   valorAntes,
-                                   valorDepois,
-                                   melhoriaComparavel,
-                                   antesValido,
-                                   depoisValido,
-                                   !antesValido && depoisValido});
         return valorDepois;
     };
 
@@ -349,108 +220,10 @@ double ILS(int usarReInsertion,
             s = sCandidato;
         }
 
-        registrosIteracoes.push_back({iteracaoAtual,
-                                      valorBaseInicio,
-                                      valorAposPerturbacao,
-                                      sAtual,
-                                      melhor,
-                                      melhorouGlobal,
-                                      iteracoesSemMelhoriaConsecutivas,
-                                      aceitaComoBase});
     }
 
     maquina = melhorSolucao;
     tardiness_maq = melhorTardiness;
-
-    if (logExecucao != nullptr)
-    {
-        *logExecucao << std::fixed << std::setprecision(6);
-
-        *logExecucao << "\n[CHAMADAS_BUSCAS_LOCAIS]\n";
-        *logExecucao << "iteracao;fase;busca;valor_antes;valor_depois;melhoria_comparavel;antes_valido;depois_valido;recuperou_solucao_invalida\n";
-        for (const auto &registro : registrosBuscas)
-        {
-            *logExecucao << registro.iteracao << ';'
-                         << registro.fase << ';'
-                         << registro.busca << ';'
-                         << registro.valorAntes << ';'
-                         << registro.valorDepois << ';'
-                         << registro.melhoriaComparavel << ';'
-                         << (registro.antesValido ? 1 : 0) << ';'
-                         << (registro.depoisValido ? 1 : 0) << ';'
-                         << (registro.recuperouSolucaoInvalida ? 1 : 0) << '\n';
-        }
-
-        *logExecucao << "\n[ITERACOES_ILS]\n";
-        *logExecucao << "iteracao;valor_base_inicio;apos_perturbacao;apos_buscas;melhor_global;melhorou_global;sem_melhoria_consecutivas;aceita_como_base\n";
-        for (const auto &registro : registrosIteracoes)
-        {
-            *logExecucao << registro.iteracao << ';'
-                         << registro.valorBaseInicio << ';'
-                         << registro.aposPerturbacao << ';'
-                         << registro.aposBuscas << ';'
-                         << registro.melhorGlobal << ';'
-                         << (registro.melhorouGlobal ? 1 : 0) << ';'
-                         << registro.semMelhoriaConsecutivas << ';'
-                         << (registro.aceitaComoBase ? 1 : 0) << '\n';
-        }
-
-        auto escreverResumoBusca = [&](const EstatisticaBusca &estatistica)
-        {
-            *logExecucao << estatistica.nome << ';'
-                         << estatistica.chamadas << ';'
-                         << estatistica.resultadosValidos << ';'
-                         << estatistica.retornosInvalidos << ';'
-                         << estatistica.recuperacoesDeSolucaoInvalida << ';'
-                         << estatistica.chamadasComparaveis << ';'
-                         << estatistica.chamadasComMelhoria << ';'
-                         << estatistica.mediaValorRetornado() << ';'
-                         << estatistica.mediaMelhoriaPorChamadaComparavel() << ';'
-                         << estatistica.mediaMelhoriaQuandoMelhora() << '\n';
-        };
-
-        *logExecucao << "\n[RESUMO_BUSCAS_LOCAIS]\n";
-        *logExecucao << "busca;chamadas;resultados_validos;retornos_invalidos;recuperacoes_de_solucao_invalida;chamadas_comparaveis;chamadas_com_melhoria;media_valor_retornado_valido;media_melhoria_por_chamada_comparavel;media_melhoria_quando_melhora\n";
-        escreverResumoBusca(estatReInsertion);
-        escreverResumoBusca(estatInsertionIm);
-        escreverResumoBusca(estatTwoSwap);
-
-        const auto maiorMelhoriaBusca = std::max_element(
-            registrosBuscas.begin(),
-            registrosBuscas.end(),
-            [](const RegistroBusca &a, const RegistroBusca &b)
-            {
-                return a.melhoriaComparavel < b.melhoriaComparavel;
-            });
-
-        *logExecucao << "\n[RESUMO_ILS]\n";
-        *logExecucao << "melhor_valor;" << melhor << '\n';
-        *logExecucao << "iteracao_melhor_solucao;" << iteracaoMelhorSolucao << '\n';
-        *logExecucao << "iteracao_maior_melhoria_global;"
-                     << iteracaoMaiorMelhoriaGlobal << '\n';
-        *logExecucao << "maior_melhoria_global;" << maiorMelhoriaGlobal << '\n';
-
-        if (maiorMelhoriaBusca != registrosBuscas.end())
-        {
-            *logExecucao << "iteracao_maior_melhoria_busca_local;"
-                         << maiorMelhoriaBusca->iteracao << '\n';
-            *logExecucao << "busca_maior_melhoria_local;"
-                         << maiorMelhoriaBusca->busca << '\n';
-            *logExecucao << "maior_melhoria_busca_local;"
-                         << maiorMelhoriaBusca->melhoriaComparavel << '\n';
-        }
-
-        *logExecucao << "iteracoes_executadas;" << iteracoesExecutadas << '\n';
-        *logExecucao << "total_iteracoes_sem_melhoria;"
-                     << totalIteracoesSemMelhoria << '\n';
-        *logExecucao << "iteracoes_sem_melhoria_finais;"
-                     << iteracoesSemMelhoriaConsecutivas << '\n';
-        *logExecucao << "max_iteracoes_sem_melhoria_consecutivas;"
-                     << maxIteracoesSemMelhoriaConsecutivas << '\n';
-        *logExecucao << "motivo_parada;"
-                     << (parouPorTempo ? "limite_tempo" : "limite_sem_melhoria")
-                     << '\n';
-    }
 
     if (buscasDebugEnabled())
     {
@@ -750,54 +523,4 @@ double two_swap(std::vector<std::vector<Operation>> &maquina,
     return r0;
 }
 
-/* long agrupaOp(std::vector<std::vector<Operation>> &maquina,
-              std::vector<Operation> &vetOperacoes,
-              std::map<int, std::map<int, int>> &controleOp,
-              std::vector<double> &tardiness_maq, std::map<int, std::deque<Operation>> tarefas)
-{
 
-    long r0 = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-    long resultadoAtual = r0;
-
-    if (buscasDebugEnabled())
-    {
-        std::cout << "[DEBUG][AGRUPAOP] Objetivo inicial: " << r0 << std::endl;
-    }
-
-    int numMaquinas = maquina.size();
-
-    std::vector<int> indicesMaquinas(numMaquinas);
-    std::iota(indicesMaquinas.begin(), indicesMaquinas.end(), 0);
-    std::sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
-              { return tardiness_maq[a] < tardiness_maq[b]; });
-
-    std::vector<double> tardiness_teste = tardiness_maq;
-
-    for (int m : indicesMaquinas)
-    {
-        size_t n = maquina[m].size();
-        if (n < 2)
-            continue;
-
-        std::vector<int> sequenciaInicial = {0};
-
-        for (size_t i = 0; i < n; i++)
-        {
-            int idJob = maquina[m][i].idJob;
-            int idOp = maquina[m][i].idOp;
-
-            if (idOp > 1)
-            {
-                Operation ant = tarefas[idJob][idOp - 2];
-                // ... lógica para agrupar ant ...
-            }
-
-            if (idOp < tarefas[idJob].size())
-            {
-                Operation suc = tarefas[idJob][idOp];
-
-                // ... lógica para agrupar suc ...
-            }
-        }
-    }
-} */

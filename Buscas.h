@@ -45,7 +45,6 @@ double ILS(int usarReInsertion,
            std::vector<Operation> &vetOperacoes,
            std::map<int, std::map<int, int>> &controleOp,
            std::vector<double> &tardiness_maq,
-           int totalOperacoes,
-           std::ostream *logExecucao = nullptr);
+           int totalOperacoes);
 
 #endif
