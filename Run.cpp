@@ -93,6 +93,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	struct stat st_mat;
+	if (stat(matrizPath.c_str(), &st_mat) != 0 || st_mat.st_size == 0)
 	{
 		std::ofstream fileM(matrizPath.c_str(), std::ios::trunc);
 		if (!fileM.is_open())
@@ -120,8 +122,15 @@ int main(int argc, char *argv[])
 				struct stat st_out;
 				if (stat(outFile.c_str(), &st_out) == 0)
 				{
-					std::cout << "Essa execução terminou. Pulando para a próxima." << std::endl;
-					continue;
+					if (st_out.st_size > 0)
+					{
+						std::cout << "Essa execução terminou (size=" << st_out.st_size << "). Pulando para a próxima." << std::endl;
+						continue;
+					}
+					else
+					{
+						std::cout << "Arquivo de saída vazio detectado (size=0). Reexecutando: " << outFile << std::endl;
+					}
 				}
 				std::string cmd = "./Main \"" + outFile + "\" \"" + matrizPath + "\" \"" + entrada->d_name + "\" \"" + convert.str() + "\" <\"" + nomeDir + entrada->d_name + "\"";
 				std::cout << "Running: " << cmd << std::endl;

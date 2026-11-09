@@ -119,6 +119,8 @@ void enviesadaPorRelease(std::vector<Operation> tarefas)
               {
                   if (a.releaseTime != b.releaseTime)
                       return a.releaseTime < b.releaseTime;
+                  if (a.dueDate != b.dueDate)
+                      return a.dueDate < b.dueDate;
                   if (a.idJob != b.idJob)
                       return a.idJob < b.idJob;
                   return a.idOp < b.idOp; });
@@ -166,7 +168,14 @@ void enviesadaPorRelease(std::vector<Operation> tarefas)
 void enviesadaPorDueDate(std::vector<Operation> tarefas)
 {
     std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
-              { return a.dueDate < b.dueDate; });
+              {
+                  if (a.dueDate != b.dueDate)
+                      return a.dueDate < b.dueDate;
+                  if (a.releaseTime != b.releaseTime)
+                      return a.releaseTime < b.releaseTime;
+                  if (a.idJob != b.idJob)
+                      return a.idJob < b.idJob;
+                  return a.idOp < b.idOp; });
 
     std::vector<double> cargaProcessamento(m, 0.0);
     std::map<int, int> maquinaPorJob;
@@ -249,13 +258,6 @@ int main(int argsc, char *argv[])
     int i = 0;
     std::map<int, std::map<int, int>> controleOp;
 
-    fileSolution.open(argv[1]);
-    if (!fileSolution.is_open())
-    {
-        std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
-        return 1;
-    }
-
     controleOp.clear();
 
     while (getline(cin, line) && !line.empty())
@@ -334,6 +336,13 @@ int main(int argsc, char *argv[])
 
     tempo_execucao = high_resolution_clock::now() - t1;
     const double tempoExecucaoSegundos = duration<double>(tempo_execucao).count();
+
+    fileSolution.open(argv[1]);
+    if (!fileSolution.is_open())
+    {
+        std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
+        return 1;
+    }
 
     fileSolution
         << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl

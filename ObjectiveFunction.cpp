@@ -16,10 +16,10 @@ static inline bool objectiveDebugEnabled()
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
-int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina) {
+int maquinaPai(int idJob, int idOpPai, const std::vector<std::vector<Operation>> &maquina) {
    for (int i = 0; i < maquina.size(); ++i) {
-        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob](const Operation& op) {
-            return op.idJob == idJob;
+        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob, idOpPai](const Operation& op) {
+            return op.idJob == idJob && op.idOp == idOpPai;
         });
 
         if (it != maquina[i].end()) {
@@ -32,7 +32,9 @@ int maquinaPai(int idJob, const std::vector<std::vector<Operation>> &maquina) {
 double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                          const std::vector<Operation> &vetOperacoes,
                          const std::map<int, std::map<int, int>> &controleOp,
-                         std::vector<double> &tardiness_maq)
+                         std::vector<double> &tardiness_maq,
+                         std::vector<std::string> *details,
+                         std::vector<std::pair<int, Operation>> *out_espera)
 {
     if (maquina.empty())
     {
@@ -73,7 +75,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     int setups = 0;
     double tardiness = 0.0;
     vector<double> tempo(m, 0.0);
-    tardiness_maq.resize(m, 0.0);
+    tardiness_maq.assign(m, 0.0);
 
     vector<int> u(m, 0); // quantidade de ferramentas atualmente carregadas
     vector<vector<int>> carregados(m, vector<int>(t, 0));
@@ -158,7 +160,7 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
     {
         for (int i = 0; i < maquina[j].size(); i++) // operacao
         {
-            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize < c)
+            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize <= c)
             {
                 u[j] += maquina[j][i].toolSetSize;
                 carregados[j][maquina[j][i].toolSetId] = 1;
@@ -201,6 +203,8 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
             break;
         }
 
+        bool algumaProcessou = false;
+
         for (int i = 0; i < maquina.size(); i++) // máquinas
         {
             int j = idxPorMaquina[i];
@@ -223,8 +227,17 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                     {
                         cout << "[DEBUG] Máquina em espera: " << i << " com a operação " << idxPorMaquina[i] << endl;
                     }
-                    esperandoPorQuem[i] = maquinaPai(maquina[i][j].idJob, maquina);
+                    esperandoPorQuem[i] = maquinaPai(idJob, idOp - 1, maquina);
+                    if (esperandoPorQuem[i] == -1 || esperandoPorQuem[i] == i)
+                    {
+                        return INT_MAX;
+                    }
                     vector<int> estado(esperandoPorQuem.size(), 0);
+
+                    if (out_espera != nullptr)
+                    {
+                        out_espera->push_back(std::make_pair(i, maquina[i][j]));
+                    }
                     
                     for (int z = 0; z < esperandoPorQuem.size(); z++){
                         if (estado[z] ==0){
@@ -254,7 +267,9 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                 cout << "[DEBUG] Máquina em processamento: " << i << " com a operação " << idxPorMaquina[i] << " de " << maquina[i].size() << " totais" << endl;
             }
 
+            esperandoPorQuem[i] = -1;
             idxPorMaquina[i]++;
+            algumaProcessou = true;
 
             // Cálculo do tempo considerando a espera
             tempo[i] = std::max({tempo[i], tempoPai, (double)maquina[i][j].releaseTime});
@@ -264,7 +279,8 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                 u[i] += maquina[i][j].toolSetSize;
                 carregados[i][maquina[i][j].toolSetId] = 1; // carrega a ferramenta necessária para a operação atual
                 troca = true;
-
+                
+                // criar critério de desempate para prioridades iguais a partir do tamanho da ferramenta
                 while (u[i] > c)
                 {
                     int maior = 0;
@@ -311,6 +327,11 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                 tardiness_maq[i] += atraso; // Acumula na máquina específica
                 tardiness += atraso;
             }
+        }
+
+        if (!algumaProcessou)
+        {
+            return INT_MAX;
         }
     }
 

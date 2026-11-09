@@ -27,6 +27,14 @@ using namespace std::chrono;
 high_resolution_clock::time_point t1;
 high_resolution_clock::time_point t2;
 std::chrono::high_resolution_clock::duration tempo_execucao;
+static std::chrono::high_resolution_clock::duration limite_tempo_execucao = std::chrono::hours(2);
+
+static inline bool tempoLimiteAtingido()
+{
+    t2 = high_resolution_clock::now();
+    tempo_execucao = t2 - t1;
+    return tempo_execucao >= limite_tempo_execucao;
+}
 
 static inline bool buscasDebugEnabled()
 {
@@ -79,6 +87,8 @@ double ILS(int usarReInsertion,
         return valorDepois;
     };
 
+    limite_tempo_execucao = std::chrono::hours(limiteTempoHoras);
+
     if (buscasDebugEnabled())
     {
         std::cout << "[DEBUG][ILS] Iniciando ILS com " << maquina.size()
@@ -90,11 +100,11 @@ double ILS(int usarReInsertion,
         objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
     double s = valorAntesIntensificacao;
 
-    if (usarReInsertion == 1)
+    if (usarReInsertion == 1 && !tempoLimiteAtingido())
         s = executarBusca(0, s, 0, "intensificacao_inicial");
-    if (usarInsertionIm == 1)
+    if (usarInsertionIm == 1 && !tempoLimiteAtingido())
         s = executarBusca(1, s, 0, "intensificacao_inicial");
-    if (usarTwoSwap == 1)
+    if (usarTwoSwap == 1 && !tempoLimiteAtingido())
         s = executarBusca(2, s, 0, "intensificacao_inicial");
 
     double melhor = s;
@@ -122,7 +132,7 @@ double ILS(int usarReInsertion,
     bool parouPorTempo = false;
 
     const int quantidadePerturbacoes = std::max(
-        2,
+        1,
         static_cast<int>(std::ceil(totalOperacoes * percentualPerturbacao)));
 
     if (buscasDebugEnabled())
@@ -137,10 +147,7 @@ double ILS(int usarReInsertion,
     // Quando uma nova melhor solucao e encontrada, o contador volta para zero.
     while (iteracoesSemMelhoriaConsecutivas < limiteIteracoesSemMelhoria)
     {
-        t2 = high_resolution_clock::now();
-        tempo_execucao = t2 - t1;
-
-        if (tempo_execucao >= std::chrono::hours(limiteTempoHoras))
+        if (tempoLimiteAtingido())
         {
             parouPorTempo = true;
             break;
@@ -152,12 +159,17 @@ double ILS(int usarReInsertion,
         maquina = solucaoBase;
         tardiness_maq = tardinessBase;
 
+        std::vector<std::pair<int, Operation>> ops_emEspera;
+        std::vector<double> tardiness_temp;
+        objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_temp, nullptr, &ops_emEspera);
+
         // Perturbacao 
-        double sAtual = pertubacao(maquina,
-                                   vetOperacoes,
-                                   controleOp,
-                                   tardiness_maq,
-                                   quantidadePerturbacoes);
+        double sAtual = pertubacao_enviesada(maquina,
+                                             vetOperacoes,
+                                             controleOp,
+                                             tardiness_maq,
+                                             ops_emEspera,
+                                             quantidadePerturbacoes);
         const double valorAposPerturbacao = sAtual;
         double sCandidato = sAtual;
 
@@ -165,6 +177,12 @@ double ILS(int usarReInsertion,
         int qual = 0;
         while (qual < 3)
         {
+            if (tempoLimiteAtingido())
+            {
+                parouPorTempo = true;
+                break;
+            }
+
             if ((qual == 0 && usarReInsertion == 0) ||
                 (qual == 1 && usarInsertionIm == 0) ||
                 (qual == 2 && usarTwoSwap == 0))
@@ -212,14 +230,16 @@ double ILS(int usarReInsertion,
                 iteracoesSemMelhoriaConsecutivas);
         }
 
-        const bool aceitaComoBase = sCandidato <= (melhor * 1.10);
+        const bool aceitaComoBase = (sAtual < INT_MAX) && (sAtual <= (melhor * 1.10));
         if (aceitaComoBase)
         {
             solucaoBase = maquina;
             tardinessBase = tardiness_maq;
-            s = sCandidato;
+            s = sAtual;
         }
 
+        if (parouPorTempo)
+            break;
     }
 
     maquina = melhorSolucao;
@@ -236,6 +256,117 @@ double ILS(int usarReInsertion,
     return melhor;
 }
 
+double pertubacao_enviesada(std::vector<std::vector<Operation>> &maquina,
+                            std::vector<Operation> &vetOperacoes,
+                            std::map<int, std::map<int, int>> &controleOp,
+                            std::vector<double> &tardiness_maq,
+                            const std::vector<std::pair<int, Operation>> &ops_emEspera,
+                            int num_ops)
+{
+    int numMaquinas = maquina.size();
+    std::vector<std::pair<int, Operation>> selecionadas;
+
+    // pegando as operações que causaram espera
+    for (const auto &op : ops_emEspera)
+    {
+        if (selecionadas.size() >= (size_t)num_ops)
+            break;
+        selecionadas.push_back(op);
+    }
+
+    // completando com aleatórias se necessário
+    while (selecionadas.size() < (size_t)num_ops)
+    {
+        int m_rand = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
+        if (maquina[m_rand].empty())
+            continue;
+        int pos_rand = std::uniform_int_distribution<>(0, maquina[m_rand].size() - 1)(rng);
+
+        selecionadas.push_back(std::make_pair(m_rand, maquina[m_rand][pos_rand]));
+    }
+
+    std::vector<double> tardiness_teste = tardiness_maq;
+
+    // perturbação de fato
+    for (const auto &item : selecionadas)
+    {
+        if (tempoLimiteAtingido())
+            break;
+
+        int maqOrigem = item.first;
+        Operation op = item.second;
+
+        // remove a operação da máquina de origem
+        bool removido = false;
+        int posOrigem = -1;
+        for (auto it = maquina[maqOrigem].begin(); it != maquina[maqOrigem].end(); ++it)
+        {
+            if (it->idJob == op.idJob && it->idOp == op.idOp)
+            {
+                posOrigem = std::distance(maquina[maqOrigem].begin(), it);
+                maquina[maqOrigem].erase(it);
+                removido = true;
+                break;
+            }
+        }
+        if (!removido)
+            continue;
+
+        // escolhe máquina de destino aleatória e DIFERENTE da origem
+        int maqDestino = maqOrigem;
+        if (numMaquinas > 1)
+        {
+            while (maqDestino == maqOrigem)
+            {
+                maqDestino = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
+            }
+        }
+
+        // testa todas as posições possíveis na máquina de destino
+        int melhorPosicao = -1;
+        double melhorSol = std::numeric_limits<double>::max();
+
+        int numOpsDestino = maquina[maqDestino].size();
+
+        // embaralhando a ordem de teste
+        std::vector<int> ordemPosicoes(numOpsDestino + 1); // +1 pq pode inserir no final
+        std::iota(ordemPosicoes.begin(), ordemPosicoes.end(), 0);
+        std::shuffle(ordemPosicoes.begin(), ordemPosicoes.end(), rng);
+
+        // testando
+        for (int pos : ordemPosicoes)
+        {
+            if (tempoLimiteAtingido())
+                break;
+
+            maquina[maqDestino].insert(maquina[maqDestino].begin() + pos, op);
+
+            double solAtual = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+
+            if (solAtual < melhorSol && solAtual < INT_MAX)
+            {
+                melhorSol = solAtual;
+                melhorPosicao = pos;
+            }
+
+            maquina[maqDestino].erase(maquina[maqDestino].begin() + pos);
+        }
+
+        // insere real
+        if (melhorPosicao != -1)
+        {
+            maquina[maqDestino].insert(maquina[maqDestino].begin() + melhorPosicao, op);
+        }
+        else
+        {
+            // caso bizarro onde nada melhora, reverte p essa operação; conversar com o leo dps sobre
+            maquina[maqOrigem].insert(maquina[maqOrigem].begin() + posOrigem, op);
+        }
+    }
+
+    return objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
+}
+
 double pertubacao(std::vector<std::vector<Operation>> &maquina,
                   std::vector<Operation> &vetOperacoes,
                   std::map<int, std::map<int, int>> &controleOp,
@@ -244,9 +375,17 @@ double pertubacao(std::vector<std::vector<Operation>> &maquina,
 {
     int numTrocas = o;
     int numMaquinas = maquina.size();
+    int tentativas = 0;
+    const int maxTentativas = std::max(20, numTrocas * 20);
+    std::vector<double> tardiness_teste = tardiness_maq;
+    double ultimoValorValido = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
 
-    for (int k = 0; k < numTrocas; ++k)
+    for (int k = 0; k < numTrocas && tentativas < maxTentativas; ++k)
     {
+        if (tempoLimiteAtingido())
+            break;
+
+        ++tentativas;
         int m1 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
         int m2 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
 
@@ -262,9 +401,21 @@ double pertubacao(std::vector<std::vector<Operation>> &maquina,
 
         // Troca as operações entre máquinas (Inter-machine Swap)
         std::swap(maquina[m1][pos1], maquina[m2][pos2]);
+
+        double valor = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+        if (valor >= INT_MAX)
+        {
+            // Desfaz troca que gerou ciclo de precedencia
+            std::swap(maquina[m1][pos1], maquina[m2][pos2]);
+            k--;
+            continue;
+        }
+
+        ultimoValorValido = valor;
+        tardiness_maq = tardiness_teste;
     }
 
-    return objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
+    return ultimoValorValido;
 }
 
 double re_insertion(std::vector<std::vector<Operation>> &maquina,
@@ -286,16 +437,20 @@ double re_insertion(std::vector<std::vector<Operation>> &maquina,
 
     int numMaquinas = maquina.size();
 
-    // Máquina com maior atraso primeiro
+    // Máquina com maior atraso primeiro (desempate aleatorio)
     std::vector<int> indicesMaquinas(numMaquinas);
     std::iota(indicesMaquinas.begin(), indicesMaquinas.end(), 0);
-    std::sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
-              { return tardiness_maq[a] > tardiness_maq[b]; });
+    std::shuffle(indicesMaquinas.begin(), indicesMaquinas.end(), rng);
+    std::stable_sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
+                     { return tardiness_maq[a] > tardiness_maq[b]; });
 
     std::vector<double> tardiness_teste = tardiness_maq;
 
     for (int m : indicesMaquinas)
     {
+        if (tempoLimiteAtingido())
+            return r0;
+
         if (maquina[m].size() < 2)
             continue;
 
@@ -313,10 +468,16 @@ double re_insertion(std::vector<std::vector<Operation>> &maquina,
 
         for (int i : ordemPosicoes)
         {
+            if (tempoLimiteAtingido())
+                return r0;
+
             for (int j = 0; j < numOps; ++j)
             {
                 if (i == j)
                     continue;
+
+                if (tempoLimiteAtingido())
+                    return r0;
 
                 Operation opCopia = maquina[m][i];
                 if (buscasDebugEnabled())
@@ -371,7 +532,6 @@ double re_insertion(std::vector<std::vector<Operation>> &maquina,
 }
 
 double insertion_im(std::vector<std::vector<Operation>> &maquina,
-
                     std::vector<Operation> &vetOperacoes,
                     std::map<int, std::map<int, int>> &controleOp,
                     std::vector<double> &tardiness_maq)
@@ -393,61 +553,75 @@ double insertion_im(std::vector<std::vector<Operation>> &maquina,
     std::stable_sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
                      { return tardiness_maq[a] < tardiness_maq[b]; });
 
-    int maq_atrasada = indicesMaquinas.back();
-    indicesMaquinas.pop_back(); // Remove a origem da lista de destinos
-
+    // Maquinas de origem: da mais atrasada para a menos atrasada
+    std::vector<int> maquinasOrigem(indicesMaquinas.rbegin(), indicesMaquinas.rend());
     std::vector<double> tardiness_teste = tardiness_maq;
 
-    for (size_t i = 0; i < maquina[maq_atrasada].size(); i++)
+    for (int maq_origem : maquinasOrigem)
     {
-        Operation op = maquina[maq_atrasada][i];
+        if (tempoLimiteAtingido())
+            return r0;
 
-        maquina[maq_atrasada].erase(maquina[maq_atrasada].begin() + i);
-
-        for (int m : indicesMaquinas)
+        for (size_t i = 0; i < maquina[maq_origem].size(); i++)
         {
-            maquina[m].push_back(op);
-            int posAtual = maquina[m].size() - 1;
+            if (tempoLimiteAtingido())
+                return r0;
 
-            int numOpsDestino = maquina[m].size();
-            std::vector<int> ordemPosicoes(numOpsDestino);
-            std::iota(ordemPosicoes.begin(), ordemPosicoes.end(), 0);
-            std::shuffle(ordemPosicoes.begin(), ordemPosicoes.end(), rng);
+            Operation op = maquina[maq_origem][i];
+            maquina[maq_origem].erase(maquina[maq_origem].begin() + i);
 
-            for (int j : ordemPosicoes)
+            for (int m : indicesMaquinas)
             {
-                Operation opCopia = maquina[m][posAtual];
-                maquina[m].erase(maquina[m].begin() + posAtual);
-                maquina[m].insert(maquina[m].begin() + j, opCopia);
-                if (buscasDebugEnabled())
+                if (m == maq_origem)
+                    continue;
+
+                if (tempoLimiteAtingido())
                 {
-                    std::cout << "[DEBUG][ISIM] Foi pra avaliação " << std::endl;
+                    maquina[maq_origem].insert(maquina[maq_origem].begin() + i, op);
+                    return r0;
                 }
-                double resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
-                if (buscasDebugEnabled())
+
+                int numOpsDestino = maquina[m].size() + 1;
+                std::vector<int> ordemPosicoes(numOpsDestino);
+                std::iota(ordemPosicoes.begin(), ordemPosicoes.end(), 0);
+                std::shuffle(ordemPosicoes.begin(), ordemPosicoes.end(), rng);
+
+                for (int j : ordemPosicoes)
                 {
-                    std::cout << "[DEBUG][ISIM] Voltou da avaliação " << std::endl;
-                }
-                if (resultadoNovo < resultadoAtual)
-                {
-                    if (buscasDebugEnabled())
+                    if (tempoLimiteAtingido())
                     {
-                        std::cout << "[DEBUG][ISIM] Melhoria encontrada! Novo objetivo=" << resultadoNovo
-                                  << " ganho=" << (r0 - resultadoNovo) << std::endl;
+                        maquina[maq_origem].insert(maquina[maq_origem].begin() + i, op);
+                        return r0;
                     }
 
-                    tardiness_maq = tardiness_teste;
-                    return resultadoNovo;
-                }
+                    maquina[m].insert(maquina[m].begin() + j, op);
+                    if (buscasDebugEnabled())
+                    {
+                        std::cout << "[DEBUG][ISIM] Foi pra avaliação " << std::endl;
+                    }
+                    double resultadoNovo = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
+                    if (buscasDebugEnabled())
+                    {
+                        std::cout << "[DEBUG][ISIM] Voltou da avaliação " << std::endl;
+                    }
+                    if (resultadoNovo < resultadoAtual)
+                    {
+                        if (buscasDebugEnabled())
+                        {
+                            std::cout << "[DEBUG][ISIM] Melhoria encontrada! Novo objetivo=" << resultadoNovo
+                                      << " ganho=" << (r0 - resultadoNovo) << std::endl;
+                        }
 
-                maquina[m].erase(maquina[m].begin() + j);
-                maquina[m].insert(maquina[m].begin() + posAtual, opCopia);
+                        tardiness_maq = tardiness_teste;
+                        return resultadoNovo;
+                    }
+
+                    maquina[m].erase(maquina[m].begin() + j);
+                }
             }
 
-            maquina[m].pop_back();
+            maquina[maq_origem].insert(maquina[maq_origem].begin() + i, op);
         }
-
-        maquina[maq_atrasada].insert(maquina[maq_atrasada].begin() + i, op);
     }
 
     if (buscasDebugEnabled())
@@ -474,21 +648,31 @@ double two_swap(std::vector<std::vector<Operation>> &maquina,
 
     std::vector<int> indicesMaquinas(numMaquinas);
     std::iota(indicesMaquinas.begin(), indicesMaquinas.end(), 0);
-    std::sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
-              { return tardiness_maq[a] > tardiness_maq[b]; });
+    std::shuffle(indicesMaquinas.begin(), indicesMaquinas.end(), rng);
+    std::stable_sort(indicesMaquinas.begin(), indicesMaquinas.end(), [&](int a, int b)
+                     { return tardiness_maq[a] > tardiness_maq[b]; });
 
     std::vector<double> tardiness_teste = tardiness_maq;
 
     for (int m : indicesMaquinas)
     {
+        if (tempoLimiteAtingido())
+            return r0;
+
         size_t n = maquina[m].size();
         if (n < 2)
             continue;
 
         for (size_t i = 0; i < n - 1; i++)
         {
+            if (tempoLimiteAtingido())
+                return r0;
+
             for (size_t j = i + 1; j < n; j++)
             {
+                if (tempoLimiteAtingido())
+                    return r0;
+
                 std::swap(maquina[m][i], maquina[m][j]);
 
                 if (buscasDebugEnabled())
