@@ -1,9 +1,14 @@
 .vscode/
 pmstr-basecases/
+Run
+Main
 Run.exe
 Main.exe
+*.o
+*.out
 nohup.out
-Main
 solucoes/
+**/solucoes/
 logs/
 execucao_geral.out
+

@@ -8,7 +8,7 @@ all: Main Run
 Main: Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp ObjectiveFunction.h Operation.h Buscas.h Configuracao.h
 	$(CXX) $(CXXFLAGS) Main.cpp ObjectiveFunction.cpp Operation.cpp Buscas.cpp -o Main
 
-Run: Run.cpp
+Run: Run.cpp Configuracao.h
 	$(CXX) $(CXXFLAGS) Run.cpp -o Run
 
 
