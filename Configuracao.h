@@ -1,26 +1,8 @@
 #ifndef CONFIGURACAO_H
 #define CONFIGURACAO_H
 
-#include <cstdlib>
-
 namespace Configuracao
 {
-    // Flag da versão do KTNS:
-    // 0 = Versão antiga (KTNS original: remoção por maior distância de reuso, sem desempate por tamanho)
-    // 1 = Versão nova (KTNS adaptado: remoção por maior tamanho com desempate pela maior distância de reuso)
-    inline constexpr int KTNS_POR_TAMANHO = 1;
-
-    // Permite sobrescrever via variável de ambiente PMSTR_KTNS_POR_TAMANHO ("0" ou "1") em baterias comparativas
-    inline int modoKtnsAtivo()
-    {
-        const char *env = std::getenv("PMSTR_KTNS_POR_TAMANHO");
-        if (env != nullptr && env[0] != '\0')
-        {
-            return (env[0] == '0') ? 0 : 1;
-        }
-        return KTNS_POR_TAMANHO;
-    }
-
     // Parâmetros calibrados para 2 máquinas
     inline constexpr int RE_INSERTION_2M = 1;
     inline constexpr int INSERTION_IM_2M = 1;
@@ -29,7 +11,7 @@ namespace Configuracao
     inline constexpr double PERCENTUAL_PERTURBACAO_2M = 0.02;
     inline constexpr int LIMITE_TEMPO_HORAS_2M = 2;
 
-    // Parâmetros calibrados para 6 máquinas (valores padrão anteriores)
+    // Parâmetros calibrados para 6 máquinas
     inline constexpr int RE_INSERTION_6M = 0;
     inline constexpr int INSERTION_IM_6M = 1;
     inline constexpr int TWO_SWAP_6M = 1;

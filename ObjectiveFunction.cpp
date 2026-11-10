@@ -1,5 +1,4 @@
 #include "ObjectiveFunction.h"
-#include "Configuracao.h"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -281,75 +280,53 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                 carregados[i][maquina[i][j].toolSetId] = 1; // carrega a ferramenta necessária para a operação atual
                 troca = true;
                 
-                const bool usarKtnsPorTamanho = (Configuracao::modoKtnsAtivo() == 1);
-
-                // Remoção de ferramentas excedentes (KTNS):
-                // - Se usarKtnsPorTamanho == true (Versão Nova):
-                //   Etapa 1: Remove ferramenta sem uso futuro (prio == -1) desempatando pelo MAIOR tamanho.
-                //   Etapa 2: Se todas têm uso futuro (prio > 0), remove a de MAIOR tamanho,
-                //            desempatando pela MAIOR distância até o próximo uso.
-                // - Se usarKtnsPorTamanho == false (Versão Antiga):
-                //   Remove a primeira ferramenta sem uso futuro (prio == -1) encontrada no vetor,
-                //   ou a de maior distância até o próximo uso (prio > maior), sem desempate por tamanho.
+                // Adaptação do KTNS considerando o tamanho das ferramentas (setsSize):
+                // Como a remoção tem custo 0 e cada reinserção futura custa 1 setup,
+                // remover ferramentas maiores evita expulsar múltiplas ferramentas menores
+                // que precisariam ser reinseridas futuramente.
                 while (u[i] > c)
                 {
                     int pEscolhida = -1;
 
-                    if (usarKtnsPorTamanho)
+                    // Etapa 1: Prioriza remover ferramentas que NÃO serão mais usadas na máquina (prioridade == -1).
+                    // Critério de desempate entre ferramentas com prioridade -1: maior tamanho (setsSize[k]),
+                    // liberando o máximo de espaço possível sem gerar custo de reinserção futura.
+                    int maiorTamanhoSemUsoFuturo = -1;
+
+                    // Etapa 2: Caso todas as ferramentas carregadas ainda sejam usadas no futuro (prioridade > 0),
+                    // escolhe a ferramenta de MAIOR tamanho (setsSize[k]) para minimizar a quantidade de ferramentas removidas.
+                    // Em caso de empate no tamanho, desempata pela MAIOR distância até o próximo uso (prioridades[i][k][j]).
+                    int maiorTamanhoComUsoFuturo = -1;
+                    int maiorPrioridadeDesempate = -1;
+
+                    for (unsigned k = 0; k < t; ++k) // ferramentas
                     {
-                        int maiorTamanhoSemUsoFuturo = -1;
-                        int maiorTamanhoComUsoFuturo = -1;
-                        int maiorPrioridadeDesempate = -1;
-
-                        for (unsigned k = 0; k < t; ++k) // ferramentas
+                        // Ignora a ferramenta exigida pela operação atual (magazine[i][k][j] == 1)
+                        // e ferramentas que não estão carregadas no magazine
+                        if (magazine[i][k][j] != 1 && carregados[i][k] == 1)
                         {
-                            if (magazine[i][k][j] != 1 && carregados[i][k] == 1)
-                            {
-                                int prio = prioridades[i][k][j];
-                                int tam = setsSize[k];
+                            int prio = prioridades[i][k][j];
+                            int tam = setsSize[k];
 
-                                if (prio == -1)
+                            if (prio == -1)
+                            {
+                                // Ferramenta não será mais necessária nesta máquina: desempata pelo maior tamanho
+                                if (tam > maiorTamanhoSemUsoFuturo)
                                 {
-                                    // Etapa 1: Ferramenta não será mais necessária nesta máquina: desempata pelo maior tamanho
-                                    if (tam > maiorTamanhoSemUsoFuturo)
-                                    {
-                                        maiorTamanhoSemUsoFuturo = tam;
-                                        pEscolhida = k;
-                                    }
-                                }
-                                else if (maiorTamanhoSemUsoFuturo == -1)
-                                {
-                                    // Etapa 2: Critério principal: maior tamanho; Desempate: maior distância de reuso (prio).
-                                    if (tam > maiorTamanhoComUsoFuturo ||
-                                        (tam == maiorTamanhoComUsoFuturo && prio > maiorPrioridadeDesempate))
-                                    {
-                                        maiorTamanhoComUsoFuturo = tam;
-                                        maiorPrioridadeDesempate = prio;
-                                        pEscolhida = k;
-                                    }
+                                    maiorTamanhoSemUsoFuturo = tam;
+                                    pEscolhida = k;
                                 }
                             }
-                        }
-                    }
-                    else
-                    {
-                        int maior = 0;
-                        for (unsigned k = 0; k < t; ++k) // ferramentas
-                        {
-                            if (magazine[i][k][j] != 1) // matriz de ferramentas
+                            else if (maiorTamanhoSemUsoFuturo == -1)
                             {
-                                if ((carregados[i][k] == 1) && (prioridades[i][k][j] == -1))
+                                // Só avalia ferramentas com uso futuro se ainda não encontrou nenhuma com prioridade -1.
+                                // Critério principal: maior tamanho; Desempate: maior distância de reuso (prio).
+                                if (tam > maiorTamanhoComUsoFuturo ||
+                                    (tam == maiorTamanhoComUsoFuturo && prio > maiorPrioridadeDesempate))
                                 {
+                                    maiorTamanhoComUsoFuturo = tam;
+                                    maiorPrioridadeDesempate = prio;
                                     pEscolhida = k;
-                                    break;
-                                }
-                                else
-                                {
-                                    if ((prioridades[i][k][j] > maior) && carregados[i][k] == 1)
-                                    {
-                                        maior = prioridades[i][k][j];
-                                        pEscolhida = k;
-                                    }
                                 }
                             }
                         }
