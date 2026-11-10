@@ -3,7 +3,6 @@
 
 #include <chrono>
 #include <map>
-#include <ostream>
 #include <vector>
 #include "ObjectiveFunction.h"
 #include "Operation.h"
@@ -20,12 +19,6 @@ double pertubacao_enviesada(std::vector<std::vector<Operation>> &maquina,
                             std::vector<double> &tardiness_maq,
                             const std::vector<std::pair<int, Operation>> &ops_emEspera,
                             int num_ops);
-
-double pertubacao(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq,
-                  int o);
 
 double re_insertion(std::vector<std::vector<Operation>> &maquina,
                     std::vector<Operation> &vetOperacoes,

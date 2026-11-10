@@ -1,6 +1,3 @@
-#include <ctime>
-#include <ratio>
-#include <string>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -11,10 +8,7 @@
 #include <vector>
 #include <iostream>
 #include <limits>
-#include <time.h>
 #include <climits>
-#include <deque>
-#include <iomanip>
 
 #include "Operation.h"
 #include "ObjectiveFunction.h"
@@ -46,12 +40,6 @@ static inline bool buscasDebugEnabled()
     return enabled;
 }
 
-static inline void buscasDebugLog(const std::string &msg)
-{
-    if (buscasDebugEnabled())
-        std::cout << msg << std::endl;
-}
-
 double ILS(int usarReInsertion,
            int usarInsertionIm,
            int usarTwoSwap,
@@ -64,27 +52,13 @@ double ILS(int usarReInsertion,
            std::vector<double> &tardiness_maq,
            int totalOperacoes)
 {
-    auto executarBusca = [&](int tipo,
-                             double valorAntes,
-                             int iteracao,
-                             const char *fase)
+    auto executarBusca = [&](int tipo)
     {
-        double valorDepois = valorAntes;
-
         if (tipo == 0)
-        {
-            valorDepois = re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
-        }
-        else if (tipo == 1)
-        {
-            valorDepois = insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
-        }
-        else
-        {
-            valorDepois = two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
-        }
-
-        return valorDepois;
+            return re_insertion(maquina, vetOperacoes, controleOp, tardiness_maq);
+        if (tipo == 1)
+            return insertion_im(maquina, vetOperacoes, controleOp, tardiness_maq);
+        return two_swap(maquina, vetOperacoes, controleOp, tardiness_maq);
     };
 
     limite_tempo_execucao = std::chrono::hours(limiteTempoHoras);
@@ -95,17 +69,15 @@ double ILS(int usarReInsertion,
                   << " maquinas e " << totalOperacoes << " operacoes" << std::endl;
     }
 
-    // Intensificacao inicial. A iteracao 0 identifica esta fase no log.
-    const double valorAntesIntensificacao =
-        objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-    double s = valorAntesIntensificacao;
+    // Intensificacao inicial
+    double s = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
 
     if (usarReInsertion == 1 && !tempoLimiteAtingido())
-        s = executarBusca(0, s, 0, "intensificacao_inicial");
+        s = executarBusca(0);
     if (usarInsertionIm == 1 && !tempoLimiteAtingido())
-        s = executarBusca(1, s, 0, "intensificacao_inicial");
+        s = executarBusca(1);
     if (usarTwoSwap == 1 && !tempoLimiteAtingido())
-        s = executarBusca(2, s, 0, "intensificacao_inicial");
+        s = executarBusca(2);
 
     double melhor = s;
     std::vector<std::vector<Operation>> melhorSolucao = maquina;
@@ -113,22 +85,8 @@ double ILS(int usarReInsertion,
     std::vector<std::vector<Operation>> solucaoBase = maquina;
     std::vector<double> tardinessBase = tardiness_maq;
 
-    int iteracaoMelhorSolucao = 0;
-    int iteracaoMaiorMelhoriaGlobal = -1;
-    double maiorMelhoriaGlobal = 0.0;
-
-    const double melhoriaIntensificacaoInicial =
-        std::max(0.0, valorAntesIntensificacao - s);
-    if (melhoriaIntensificacaoInicial > 0.0)
-    {
-        iteracaoMaiorMelhoriaGlobal = 0;
-        maiorMelhoriaGlobal = melhoriaIntensificacaoInicial;
-    }
-
     int iteracoesExecutadas = 0;
     int iteracoesSemMelhoriaConsecutivas = 0;
-    int totalIteracoesSemMelhoria = 0;
-    int maxIteracoesSemMelhoriaConsecutivas = 0;
     bool parouPorTempo = false;
 
     const int quantidadePerturbacoes = std::max(
@@ -143,7 +101,7 @@ double ILS(int usarReInsertion,
                   << std::endl;
     }
 
-    // iteracoes CONSECUTIVAS sem melhoria global.
+    // Iteracoes consecutivas sem melhoria global.
     // Quando uma nova melhor solucao e encontrada, o contador volta para zero.
     while (iteracoesSemMelhoriaConsecutivas < limiteIteracoesSemMelhoria)
     {
@@ -153,8 +111,7 @@ double ILS(int usarReInsertion,
             break;
         }
 
-        const int iteracaoAtual = ++iteracoesExecutadas;
-        const double valorBaseInicio = s;
+        ++iteracoesExecutadas;
 
         maquina = solucaoBase;
         tardiness_maq = tardinessBase;
@@ -163,17 +120,16 @@ double ILS(int usarReInsertion,
         std::vector<double> tardiness_temp;
         objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_temp, nullptr, &ops_emEspera);
 
-        // Perturbacao 
+        // Perturbacao enviesada
         double sAtual = pertubacao_enviesada(maquina,
                                              vetOperacoes,
                                              controleOp,
                                              tardiness_maq,
                                              ops_emEspera,
                                              quantidadePerturbacoes);
-        const double valorAposPerturbacao = sAtual;
         double sCandidato = sAtual;
 
-        // VND 
+        // VND
         int qual = 0;
         while (qual < 3)
         {
@@ -191,7 +147,7 @@ double ILS(int usarReInsertion,
                 continue;
             }
 
-            sCandidato = executarBusca(qual, sAtual, iteracaoAtual, "vnd");
+            sCandidato = executarBusca(qual);
 
             if (sCandidato < sAtual)
             {
@@ -204,30 +160,16 @@ double ILS(int usarReInsertion,
             }
         }
 
-        bool melhorouGlobal = false;
         if (sAtual < melhor)
         {
-            const double melhoriaGlobal = melhor - sAtual;
             melhor = sAtual;
             melhorSolucao = maquina;
             melhorTardiness = tardiness_maq;
-            iteracaoMelhorSolucao = iteracaoAtual;
             iteracoesSemMelhoriaConsecutivas = 0;
-            melhorouGlobal = true;
-
-            if (melhoriaGlobal > maiorMelhoriaGlobal)
-            {
-                maiorMelhoriaGlobal = melhoriaGlobal;
-                iteracaoMaiorMelhoriaGlobal = iteracaoAtual;
-            }
         }
         else
         {
             ++iteracoesSemMelhoriaConsecutivas;
-            ++totalIteracoesSemMelhoria;
-            maxIteracoesSemMelhoriaConsecutivas = std::max(
-                maxIteracoesSemMelhoriaConsecutivas,
-                iteracoesSemMelhoriaConsecutivas);
         }
 
         const bool aceitaComoBase = (sAtual < INT_MAX) && (sAtual <= (melhor * 1.10));
@@ -365,57 +307,6 @@ double pertubacao_enviesada(std::vector<std::vector<Operation>> &maquina,
     }
 
     return objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-}
-
-double pertubacao(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq,
-                  int o)
-{
-    int numTrocas = o;
-    int numMaquinas = maquina.size();
-    int tentativas = 0;
-    const int maxTentativas = std::max(20, numTrocas * 20);
-    std::vector<double> tardiness_teste = tardiness_maq;
-    double ultimoValorValido = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_maq);
-
-    for (int k = 0; k < numTrocas && tentativas < maxTentativas; ++k)
-    {
-        if (tempoLimiteAtingido())
-            break;
-
-        ++tentativas;
-        int m1 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
-        int m2 = std::uniform_int_distribution<>(0, numMaquinas - 1)(rng);
-
-        if (m1 == m2 || maquina[m1].empty() || maquina[m2].empty())
-        {
-            k--; // Tenta novamente
-            continue;
-        }
-
-        // Escolhe posições aleatórias
-        int pos1 = std::uniform_int_distribution<>(0, maquina[m1].size() - 1)(rng);
-        int pos2 = std::uniform_int_distribution<>(0, maquina[m2].size() - 1)(rng);
-
-        // Troca as operações entre máquinas (Inter-machine Swap)
-        std::swap(maquina[m1][pos1], maquina[m2][pos2]);
-
-        double valor = objectiveFunction(maquina, vetOperacoes, controleOp, tardiness_teste);
-        if (valor >= INT_MAX)
-        {
-            // Desfaz troca que gerou ciclo de precedencia
-            std::swap(maquina[m1][pos1], maquina[m2][pos2]);
-            k--;
-            continue;
-        }
-
-        ultimoValorValido = valor;
-        tardiness_maq = tardiness_teste;
-    }
-
-    return ultimoValorValido;
 }
 
 double re_insertion(std::vector<std::vector<Operation>> &maquina,

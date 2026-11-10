@@ -12,43 +12,6 @@
 #include <errno.h>
 #include <string.h>
 #include "Configuracao.h"
-static bool starts_with(const std::string &s, const std::string &prefix)
-{
-	return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
-}
-
-static bool get_num(const std::string &s, const std::string &key, double &out)
-{
-	size_t p = s.find(key);
-	if (p == std::string::npos)
-		return false;
-	p += key.size();
-	size_t e = s.find_first_of(" \t\r\n", p);
-	std::string v = s.substr(p, (e == std::string::npos) ? std::string::npos : (e - p));
-	try
-	{
-		out = std::stod(v);
-		return true;
-	}
-	catch (...)
-	{
-		return false;
-	}
-}
-
-static bool get_tail(const std::string &s, const std::string &key, std::string &out)
-{
-	size_t p = s.find(key);
-	if (p == std::string::npos)
-		return false;
-	p += key.size();
-	while (p < s.size() && (s[p] == ' ' || s[p] == '\t'))
-		++p;
-	out = s.substr(p);
-	while (!out.empty() && (out.back() == '\r' || out.back() == '\n' || out.back() == ' ' || out.back() == '\t'))
-		out.pop_back();
-	return true;
-}
 
 int main(int argc, char *argv[])
 {
@@ -195,7 +158,7 @@ int main(int argc, char *argv[])
 						continue;
 
 					std::string line;
-					std::string instance, inicial_sol,sol_insertion, sol_insertionIM, sol_twoSwap, tempo_sol, ils;
+					std::string instance, inicial_sol, tempo_sol, ils;
 					int o, m, t, c;
 					if (!std::getline(file, line))
 					{
@@ -222,9 +185,6 @@ int main(int argc, char *argv[])
 							  << "," << c
 							  << "," << inicial_sol
 							  << "," << ils
-							/*   << "," << sol_insertion
-							  << "," << sol_insertionIM
-							  << "," << sol_twoSwap */
 							  << "," << tempo_sol
 							  << std::endl;
 					}

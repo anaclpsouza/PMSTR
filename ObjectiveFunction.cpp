@@ -168,13 +168,6 @@ double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
         }
     }
 
-    int max_op = 0;
-    for (int i = 0; i < maquina.size(); ++i)
-    {
-        if (maquina[i].size() > max_op)
-            max_op = maquina[i].size();
-    }
-
     std::vector<int> idxPorMaquina(maquina.size(), 0);
     vector<int> esperandoPorQuem(maquina.size(), -1);
     

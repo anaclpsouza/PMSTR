@@ -12,19 +12,15 @@
 #include <chrono>
 #include <deque>
 #include <random>
-#include <filesystem>
-#include <iomanip>
 #include "Buscas.h"
 #include "Configuracao.h"
 
 using namespace std;
+using namespace std::chrono;
+
 std::ofstream fileSolution;
 int m, o, t, c;
 std::vector<std::vector<Operation>> maquinas;
-std::map<int, double> tempoMaq;
-extern high_resolution_clock::time_point t2;
-
-using namespace std::chrono;
 
 void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
 {
@@ -282,7 +278,6 @@ int main(int argsc, char *argv[])
 
     t1 = high_resolution_clock::now();
 
-    std::map<int, double> tempo_final;
     std::vector<double> tardiness_maq;
     std::map<int, std::deque<Operation>> tarefas;
     for (const auto &op : vetOperacao)
