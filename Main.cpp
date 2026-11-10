@@ -322,12 +322,14 @@ int main(int argsc, char *argv[])
     maquinas = melhorMaquinas;
     tardiness_maq = melhorTardiness;
 
-    double ils = ILS(Configuracao::RE_INSERTION,
-                     Configuracao::INSERTION_IM,
-                     Configuracao::TWO_SWAP,
-                     Configuracao::LIMITE_ITERACOES_SEM_MELHORIA,
-                     Configuracao::PERCENTUAL_PERTURBACAO,
-                     Configuracao::LIMITE_TEMPO_HORAS,
+    const auto params = Configuracao::obterParametros(m);
+
+    double ils = ILS(params.reInsertion,
+                     params.insertionIm,
+                     params.twoSwap,
+                     params.limiteIteracoesSemMelhoria,
+                     params.percentualPerturbacao,
+                     params.limiteTempoHoras,
                      maquinas,
                      vetOperacao,
                      controleOp,

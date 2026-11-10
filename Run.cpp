@@ -168,13 +168,17 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			fileR << "RE_INSERTION,INSERTION_IM,TWO_SWAP,LIMITE_SEM_MELHORIA,PERCENTUAL_PERTURBACAO,LIMITE_TEMPO_HORAS" << std::endl;
-			fileR << Configuracao::RE_INSERTION << ","
-				  << Configuracao::INSERTION_IM << ","
-				  << Configuracao::TWO_SWAP << ","
-				  << Configuracao::LIMITE_ITERACOES_SEM_MELHORIA << ","
-				  << Configuracao::PERCENTUAL_PERTURBACAO << ","
-				  << Configuracao::LIMITE_TEMPO_HORAS << std::endl;
+			const int numMaqConfig = (nomeDir.find("2M") != std::string::npos) ? 2 : 6;
+			const auto params = Configuracao::obterParametros(numMaqConfig);
+
+			fileR << "RE_INSERTION,INSERTION_IM,TWO_SWAP,LIMITE_SEM_MELHORIA,PERCENTUAL_PERTURBACAO,LIMITE_TEMPO_HORAS,KTNS_POR_TAMANHO" << std::endl;
+			fileR << params.reInsertion << ","
+				  << params.insertionIm << ","
+				  << params.twoSwap << ","
+				  << params.limiteIteracoesSemMelhoria << ","
+				  << params.percentualPerturbacao << ","
+				  << params.limiteTempoHoras << ","
+				  << Configuracao::modoKtnsAtivo() << std::endl;
 			fileR << std::endl;
 			fileR << "Arquivo,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s)" << std::endl;
 
