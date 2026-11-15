@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 				  << params.percentualPerturbacao << ","
 				  << params.limiteTempoHoras << std::endl;
 			fileR << std::endl;
-			fileR << "Arquivo,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s)" << std::endl;
+			fileR << "Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates" << std::endl;
 
 			struct dirent *ent2;
 			while ((ent2 = readdir(dir2)) != nullptr)
@@ -158,8 +158,9 @@ int main(int argc, char *argv[])
 						continue;
 
 					std::string line;
-					std::string instance, inicial_sol, tempo_sol, ils;
+					std::string cenario, execucao, instance, inicial_sol, tempo_sol, ils;
 					int o, m, t, c;
+					long long ktns_antigo = 0, ktns_novo = 0, empates = 0;
 					if (!std::getline(file, line))
 					{
 						file.close();
@@ -175,9 +176,10 @@ int main(int argc, char *argv[])
 
 					std::replace(line.begin(), line.end(), ',', ' ');
 					std::istringstream iss(line);
-					if (iss >> instance >> o >> m >> t >> c >> inicial_sol >> ils >> tempo_sol)
+					if (iss >> cenario >> execucao >> instance >> o >> m >> t >> c >> inicial_sol >> ils >> tempo_sol >> ktns_antigo >> ktns_novo >> empates)
 					{
-						fileR << nomeArq
+						fileR << cenario
+							  << "," << execucao
 							  << "," << instance
 							  << "," << o
 							  << "," << m
@@ -186,7 +188,45 @@ int main(int argc, char *argv[])
 							  << "," << inicial_sol
 							  << "," << ils
 							  << "," << tempo_sol
+							  << "," << ktns_antigo
+							  << "," << ktns_novo
+							  << "," << empates
 							  << std::endl;
+					}
+					else
+					{
+						// Compatibilidade caso exista algum arquivo SAIDA_* antigo de 8 colunas
+						std::istringstream issLegacy(line);
+						if (issLegacy >> instance >> o >> m >> t >> c >> inicial_sol >> ils >> tempo_sol)
+						{
+							std::string base = nomeArq;
+							if (base.size() >= 4 && base.substr(base.size() - 4) == ".csv")
+								base = base.substr(0, base.size() - 4);
+							execucao = base;
+							cenario = "-";
+							size_t segUnd = base.find('_', 6);
+							if (segUnd != std::string::npos)
+							{
+								execucao = base.substr(0, segUnd);
+								std::string resto = base.substr(segUnd + 1);
+								size_t undCen = resto.find('_');
+								cenario = (undCen != std::string::npos && undCen + 1 < resto.size())
+											  ? resto.substr(undCen + 1)
+											  : resto;
+							}
+							fileR << cenario
+								  << "," << execucao
+								  << "," << instance
+								  << "," << o
+								  << "," << m
+								  << "," << t
+								  << "," << c
+								  << "," << inicial_sol
+								  << "," << ils
+								  << "," << tempo_sol
+								  << ",0,0,0"
+								  << std::endl;
+						}
 					}
 					file.close();
 				}

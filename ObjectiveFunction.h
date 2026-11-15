@@ -12,6 +12,16 @@ extern int o;
 extern int t;
 extern int c;
 
+struct EstatisticasKTNS
+{
+    long long ktnsAntigo = 0;
+    long long ktnsNovo = 0;
+    long long empates = 0;
+};
+
+extern EstatisticasKTNS estatisticasKtns;
+void resetarEstatisticasKtns();
+
 double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
                          const std::vector<Operation> &vetOperacoes,
                          const std::map<int, std::map<int, int>> &controleOp_base,

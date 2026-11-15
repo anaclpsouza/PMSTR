@@ -224,6 +224,78 @@ int parseHeaderValue(string line)
     return value;
 }
 
+struct IdentificacaoSaida
+{
+    std::string cenario;
+    std::string execucao;
+    std::string instancia;
+};
+
+IdentificacaoSaida extrairIdentificacao(int argsc, char *argv[], int m_val, int o_val)
+{
+    std::string instanciaPadrao = std::to_string(m_val) + "M" + std::to_string(o_val);
+    std::string execucao = "SAIDA_1";
+    std::string nomeBaseInstancia;
+
+    auto removerDiretorioEExtensao = [](std::string s)
+    {
+        size_t barra = s.find_last_of("/\\");
+        if (barra != std::string::npos)
+            s = s.substr(barra + 1);
+        if (s.size() >= 4 && s.substr(s.size() - 4) == ".csv")
+            s = s.substr(0, s.size() - 4);
+        return s;
+    };
+
+    if (argsc >= 5)
+    {
+        std::string argExec = argv[4];
+        if (argExec.rfind("SAIDA_", 0) == 0)
+            execucao = argExec;
+        else
+            execucao = "SAIDA_" + argExec;
+
+        nomeBaseInstancia = removerDiretorioEExtensao(argv[3]);
+    }
+    else
+    {
+        std::string nomeArqSaida = removerDiretorioEExtensao(argv[1]);
+        if (nomeArqSaida.rfind("SAIDA_", 0) == 0)
+        {
+            size_t segundoUnderscore = nomeArqSaida.find('_', 6);
+            if (segundoUnderscore != std::string::npos)
+            {
+                execucao = nomeArqSaida.substr(0, segundoUnderscore);
+                nomeBaseInstancia = nomeArqSaida.substr(segundoUnderscore + 1);
+            }
+            else
+            {
+                execucao = nomeArqSaida;
+            }
+        }
+        else if (!nomeArqSaida.empty())
+        {
+            execucao = nomeArqSaida;
+        }
+    }
+
+    std::string cenario = "-";
+    if (!nomeBaseInstancia.empty())
+    {
+        size_t posUnderscore = nomeBaseInstancia.find('_');
+        if (posUnderscore != std::string::npos && posUnderscore + 1 < nomeBaseInstancia.size())
+        {
+            cenario = nomeBaseInstancia.substr(posUnderscore + 1);
+        }
+        else
+        {
+            cenario = nomeBaseInstancia;
+        }
+    }
+
+    return {cenario, execucao, instanciaPadrao};
+}
+
 
 int main(int argsc, char *argv[])
 {
@@ -276,6 +348,7 @@ int main(int argsc, char *argv[])
         }
     }
 
+    resetarEstatisticasKtns();
     t1 = high_resolution_clock::now();
 
     std::vector<double> tardiness_maq;
@@ -341,16 +414,23 @@ int main(int argsc, char *argv[])
         return 1;
     }
 
+    const auto idSaida = extrairIdentificacao(argsc, argv, m, o);
+
     fileSolution
-        << "Instance_name,O,M,T,C,Solucao_Inicial,ILS,Tempo de_execucao(s)" << endl
-        << m << "M" << o << ","
+        << "Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates" << endl
+        << idSaida.cenario << ","
+        << idSaida.execucao << ","
+        << idSaida.instancia << ","
         << o << ","
         << m << ","
         << t << ","
         << c << ","
         << sol_inicial << ","
         << ils << ","
-        << tempoExecucaoSegundos << endl;
+        << tempoExecucaoSegundos << ","
+        << estatisticasKtns.ktnsAntigo << ","
+        << estatisticasKtns.ktnsNovo << ","
+        << estatisticasKtns.empates << endl;
 
     fileSolution.close();
 

@@ -32,13 +32,12 @@ onde $T_{j,k} = \max(0, C_{j,k} - d_{j,k})$ é o atraso da operação e $w_d = w
 
 ---
 
-## 2. Política KTNS Adaptada por Tamanho de Ferramenta
+## 2. Avaliação Dupla de KTNS (Original vs. Adaptado por Tamanho)
 
-No algoritmo **KTNS** clássico (proposto originalmente para ferramentas de tamanho uniforme igual a 1), quando o magazine excede a capacidade $C$, remove-se a ferramenta cujo próximo uso está mais distante no futuro.
+Em cada chamada da função objetivo (`ObjectiveFunction.cpp`), o escalonamento é avaliado pelas **duas versões do KTNS** e retorna o **menor valor objetivo** encontrado entre elas, contabilizando quantas vezes cada abordagem venceu (`KTNS_Antigo`, `KTNS_Novo`) ou empatou (`Empates`, usando o `KTNS_Novo` como desempate):
 
-Entretanto, no **PMSTR**, os conjuntos de ferramentas possuem **tamanhos variáveis (`toolSetSize`)**, enquanto o custo de remoção é `0` e o custo de cada reinserção futura é `1` setup ($\tau = 1\text{h}$ por conjunto inserido). Remover ferramentas pequenas apenas pela distância de reuso pode forçar a remoção de **múltiplas ferramentas** para liberar espaço suficiente, gerando múltiplos setups futuros de reinserção.
-
-Para contornar essa limitação, `ObjectiveFunction.cpp` implementa o **KTNS orientado ao tamanho das ferramentas** em duas etapas:
+- **KTNS Antigo (Original):** Quando o magazine excede a capacidade $C$, remove ferramentas sem uso futuro (`prioridade == -1`) ou, na ausência destas, aquela cujo próximo uso está mais distante no futuro (`maior prioridade`).
+- **KTNS Novo (Orientado ao Tamanho):** Como os conjuntos de ferramentas possuem tamanhos variáveis (`toolSetSize`), o custo de remoção é `0` e cada reinserção futura custa `1` setup ($\tau = 1\text{h}$), remover ferramentas pequenas apenas pela distância de reuso pode forçar a remoção de múltiplas ferramentas. O KTNS Novo opera em duas etapas:
 
 1. **Etapa 1 — Ferramentas sem uso futuro na máquina (`prioridade == -1`):**
    - Prioriza sempre remover ferramentas que não serão mais necessárias na máquina (custo futuro de reinserção igual a zero).
@@ -162,7 +161,7 @@ make clean
 
 - **Retomada automática:** Caso a máquina seja desligada ou a execução seja interrompida, basta rodar o mesmo comando `./Run` novamente. Ele verifica os arquivos `SAIDA_*` já concluídos (`size > 0`), pula as execuções finalizadas e reexecuta automaticamente eventuais arquivos vazios ou faltantes.
 - **Saídas geradas em `<cenario>/solucoes/`:**
-  - `SAIDA_<exec>_<instancia>.csv`: resultado individual da execução (`Solucao_Inicial`, `ILS`, `Tempo de_execucao(s)`).
+  - `SAIDA_<exec>_<instancia>.csv`: resultado individual da execução com as colunas `Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates`.
   - `RESUMO.csv`: planilha consolidada com os parâmetros utilizados e os resultados de todas as execuções do cenário.
   - `MATRIZES_FINAIS.txt`: sequenciamento final das operações em cada máquina (`M1..Mm`) para cada execução.
 
