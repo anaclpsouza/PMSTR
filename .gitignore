@@ -11,4 +11,6 @@ solucoes/
 **/solucoes/
 logs/
 execucao_geral.out
-
+testes_ktns/
+backup/
+backup-*/
