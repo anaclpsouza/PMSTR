@@ -1,238 +1,241 @@
-#include <dirent.h>
-#include <cstdlib>
-#include <string>
-#include <fstream>
+#include "Configuracao.h"
+
 #include <algorithm>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <dirent.h>
+#include <fstream>
 #include <iostream>
 #include <sstream>
-#include <stdio.h>
-#include <stdlib.h>
+#include <string>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <errno.h>
-#include <string.h>
-#include "Configuracao.h"
-static bool starts_with(const std::string &s, const std::string &prefix)
+
+static void garantirDiretorioSolucoes(const std::string &caminhoSolucoes)
 {
-	return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
+    struct stat statusDir{};
+    if (stat(caminhoSolucoes.c_str(), &statusDir) != -1)
+        return;
+
+    if (mkdir(caminhoSolucoes.c_str(), 0755) != 0)
+        std::cerr << "Falha ao criar o diretorio '" << caminhoSolucoes << "': " << std::strerror(errno) << std::endl;
+    else
+        std::cout << "Diretorio criado: " << caminhoSolucoes << std::endl;
 }
 
-static bool get_num(const std::string &s, const std::string &key, double &out)
+static void garantirCabecalhoMatrizes(const std::string &caminhoMatrizes)
 {
-	size_t p = s.find(key);
-	if (p == std::string::npos)
-		return false;
-	p += key.size();
-	size_t e = s.find_first_of(" \t\r\n", p);
-	std::string v = s.substr(p, (e == std::string::npos) ? std::string::npos : (e - p));
-	try
-	{
-		out = std::stod(v);
-		return true;
-	}
-	catch (...)
-	{
-		return false;
-	}
+    struct stat statusArquivo{};
+    if (stat(caminhoMatrizes.c_str(), &statusArquivo) == 0 && statusArquivo.st_size > 0)
+        return;
+
+    std::ofstream arquivoMatrizes(caminhoMatrizes, std::ios::trunc);
+    if (!arquivoMatrizes.is_open())
+    {
+        std::cerr << "Falha ao criar arquivo compilado de matrizes: " << caminhoMatrizes << std::endl;
+        return;
+    }
+
+    arquivoMatrizes << "MATRIZES FINAIS COMPILADAS\n"
+                    << "=========================\n\n";
 }
 
-static bool get_tail(const std::string &s, const std::string &key, std::string &out)
+static void extrairIdentificacaoLegada(const std::string &nomeArquivo,
+                                       std::string &outExecucao,
+                                       std::string &outCenario)
 {
-	size_t p = s.find(key);
-	if (p == std::string::npos)
-		return false;
-	p += key.size();
-	while (p < s.size() && (s[p] == ' ' || s[p] == '\t'))
-		++p;
-	out = s.substr(p);
-	while (!out.empty() && (out.back() == '\r' || out.back() == '\n' || out.back() == ' ' || out.back() == '\t'))
-		out.pop_back();
-	return true;
+    std::string base = nomeArquivo;
+    if (base.size() >= 4 && base.substr(base.size() - 4) == ".csv")
+        base = base.substr(0, base.size() - 4);
+
+    outExecucao = base;
+    outCenario = "-";
+
+    const size_t segundoUnderscore = base.find('_', 6);
+    if (segundoUnderscore == std::string::npos)
+        return;
+
+    outExecucao = base.substr(0, segundoUnderscore);
+    const std::string resto = base.substr(segundoUnderscore + 1);
+    const size_t underscoreCenario = resto.find('_');
+    outCenario = (underscoreCenario != std::string::npos && underscoreCenario + 1 < resto.size())
+                     ? resto.substr(underscoreCenario + 1)
+                     : resto;
+}
+
+static void gerarResumoCsv(const std::string &diretorioInstancias,
+                           const std::string &caminhoSolucoes,
+                           const std::string &caminhoMatrizes)
+{
+    std::cout << "Generating summary in: " << caminhoSolucoes << std::endl;
+
+    DIR *dirSolucoes = opendir(caminhoSolucoes.c_str());
+    if (dirSolucoes == nullptr)
+    {
+        std::cerr << "Could not open solucoes directory for summary: " << std::strerror(errno) << std::endl;
+        return;
+    }
+
+    const std::string caminhoResumo = caminhoSolucoes + "/RESUMO.csv";
+    std::ofstream arquivoResumo(caminhoResumo);
+    if (!arquivoResumo.is_open())
+    {
+        std::cerr << "Failed to open resumo file for writing: " << caminhoResumo << std::endl;
+        closedir(dirSolucoes);
+        return;
+    }
+
+    const int numMaqConfig = (diretorioInstancias.find("2M") != std::string::npos) ? 2 : 6;
+    const auto params = Configuracao::obterParametros(numMaqConfig);
+
+    arquivoResumo << "RE_INSERTION,INSERTION_IM,TWO_SWAP,LIMITE_SEM_MELHORIA,PERCENTUAL_PERTURBACAO,LIMITE_TEMPO_HORAS\n"
+                  << params.reInsertion << ","
+                  << params.insertionIm << ","
+                  << params.twoSwap << ","
+                  << params.limiteIteracoesSemMelhoria << ","
+                  << params.percentualPerturbacao << ","
+                  << params.limiteTempoHoras << "\n\n"
+                  << "Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates\n";
+
+    struct dirent *entradaResumo = nullptr;
+    while ((entradaResumo = readdir(dirSolucoes)) != nullptr)
+    {
+        if (entradaResumo->d_type != DT_REG)
+            continue;
+
+        const std::string nomeArquivo = entradaResumo->d_name;
+        if (nomeArquivo == "RESUMO.csv" || nomeArquivo.rfind("SAIDA_", 0) != 0)
+            continue;
+
+        std::ifstream arquivoSaida(caminhoSolucoes + "/" + nomeArquivo);
+        if (!arquivoSaida.is_open())
+            continue;
+
+        std::string linha;
+        if (!std::getline(arquivoSaida, linha))
+        {
+            std::cout << "Não leu as linhas" << std::endl;
+            continue;
+        }
+        if (!std::getline(arquivoSaida, linha))
+            continue;
+
+        std::replace(linha.begin(), linha.end(), ',', ' ');
+        std::istringstream iss(linha);
+
+        std::string cenario, execucao, instancia, solucaoInicial, ils, tempoExecucao;
+        int numOps = 0, numMaqs = 0, numConjuntos = 0, capacidade = 0;
+        long long ktnsAntigo = 0, ktnsNovo = 0, empates = 0;
+
+        if (iss >> cenario >> execucao >> instancia >> numOps >> numMaqs >> numConjuntos >> capacidade >> solucaoInicial >> ils >> tempoExecucao >> ktnsAntigo >> ktnsNovo >> empates)
+        {
+            arquivoResumo << cenario << ","
+                          << execucao << ","
+                          << instancia << ","
+                          << numOps << ","
+                          << numMaqs << ","
+                          << numConjuntos << ","
+                          << capacidade << ","
+                          << solucaoInicial << ","
+                          << ils << ","
+                          << tempoExecucao << ","
+                          << ktnsAntigo << ","
+                          << ktnsNovo << ","
+                          << empates << '\n';
+            continue;
+        }
+
+        // Compatibilidade com arquivos SAIDA_* legados de 8 colunas.
+        std::istringstream issLegado(linha);
+        if (issLegado >> instancia >> numOps >> numMaqs >> numConjuntos >> capacidade >> solucaoInicial >> ils >> tempoExecucao)
+        {
+            extrairIdentificacaoLegada(nomeArquivo, execucao, cenario);
+            arquivoResumo << cenario << ","
+                          << execucao << ","
+                          << instancia << ","
+                          << numOps << ","
+                          << numMaqs << ","
+                          << numConjuntos << ","
+                          << capacidade << ","
+                          << solucaoInicial << ","
+                          << ils << ","
+                          << tempoExecucao << ",0,0,0\n";
+        }
+    }
+
+    closedir(dirSolucoes);
+    std::cout << "Summary written to: " << caminhoResumo << std::endl;
+    std::cout << "Final matrices written to: " << caminhoMatrizes << std::endl;
 }
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3)
-	{
-		std::cerr << "Diretório com as instâncias não foi informado." << std::endl;
-		exit(1);
-	}
-	std::string nomeDir = argv[1];
-	int repeticoes = std::stoi(argv[2]);
+    if (argc != 3)
+    {
+        std::cerr << "Diretório com as instâncias não foi informado." << std::endl;
+        return 1;
+    }
 
-	if (!nomeDir.empty() && nomeDir.back() != '/')
-		nomeDir.push_back('/');
-	DIR *dir = 0;
-	struct dirent *entrada = 0;
-	unsigned char isFile = 0x8;
+    std::string diretorioInstancias = argv[1];
+    const int repeticoes = std::stoi(argv[2]);
 
-	dir = opendir(nomeDir.c_str());
+    if (!diretorioInstancias.empty() && diretorioInstancias.back() != '/')
+        diretorioInstancias.push_back('/');
 
-	if (dir == 0)
-	{
-		std::cerr << "Nao foi possível abrir diretorio com as instâncias." << std::endl;
-		exit(1);
-	}
+    DIR *dirInstancias = opendir(diretorioInstancias.c_str());
+    if (dirInstancias == nullptr)
+    {
+        std::cerr << "Nao foi possível abrir diretorio com as instâncias." << std::endl;
+        return 1;
+    }
 
-	std::string solucoesPath = nomeDir;
-	if (!solucoesPath.empty() && solucoesPath.back() != '/')
-		solucoesPath.push_back('/');
-	solucoesPath += "solucoes";
-	std::string matrizPath = solucoesPath + "/MATRIZES_FINAIS.txt";
+    const std::string caminhoSolucoes = diretorioInstancias + "solucoes";
+    const std::string caminhoMatrizes = caminhoSolucoes + "/MATRIZES_FINAIS.txt";
 
-	struct stat st;
-	if (stat(solucoesPath.c_str(), &st) == -1)
-	{
-		if (mkdir(solucoesPath.c_str(), 0755) != 0)
-		{
-			std::cerr << "Falha ao criar o diretório '" << solucoesPath << "': " << strerror(errno) << std::endl;
-		}
-		else
-		{
-			std::cout << "Diretório criado: " << solucoesPath << std::endl;
-		}
-	}
+    garantirDiretorioSolucoes(caminhoSolucoes);
+    garantirCabecalhoMatrizes(caminhoMatrizes);
 
-	struct stat st_mat;
-	if (stat(matrizPath.c_str(), &st_mat) != 0 || st_mat.st_size == 0)
-	{
-		std::ofstream fileM(matrizPath.c_str(), std::ios::trunc);
-		if (!fileM.is_open())
-		{
-			std::cerr << "Falha ao criar arquivo compilado de matrizes: " << matrizPath << std::endl;
-		}
-		else
-		{
-			fileM << "MATRIZES FINAIS COMPILADAS" << std::endl;
-			fileM << "=========================" << std::endl
-				  << std::endl;
-		}
-	}
+    struct dirent *entradaInstancia = nullptr;
+    while ((entradaInstancia = readdir(dirInstancias)) != nullptr)
+    {
+        if (entradaInstancia->d_type != DT_REG)
+            continue;
 
-	while ((entrada = readdir(dir)))
-	{
-		if (entrada->d_type == isFile)
-		{
-			for (int i = 1; i <= repeticoes; ++i)
-			{
-				std::stringstream convert;
-				std::cout << i << " Execucao: " << nomeDir + entrada->d_name << std::endl;
-				convert << i;
-				std::string outFile = nomeDir + "solucoes/SAIDA_" + convert.str() + "_" + entrada->d_name;
-				struct stat st_out;
-				if (stat(outFile.c_str(), &st_out) == 0)
-				{
-					if (st_out.st_size > 0)
-					{
-						std::cout << "Essa execução terminou (size=" << st_out.st_size << "). Pulando para a próxima." << std::endl;
-						continue;
-					}
-					else
-					{
-						std::cout << "Arquivo de saída vazio detectado (size=0). Reexecutando: " << outFile << std::endl;
-					}
-				}
-				std::string cmd = "./Main \"" + outFile + "\" \"" + matrizPath + "\" \"" + entrada->d_name + "\" \"" + convert.str() + "\" <\"" + nomeDir + entrada->d_name + "\"";
-				std::cout << "Running: " << cmd << std::endl;
-				int s = system(cmd.c_str());
-				std::cout << "Return code: " << s << " for output file: " << outFile << std::endl;
+        const std::string nomeInstancia = entradaInstancia->d_name;
 
-				if (stat(outFile.c_str(), &st_out) == 0)
-				{
-					std::cout << "Output created: " << outFile << " (size=" << st_out.st_size << ")" << std::endl;
-				}
-				else
-				{
-					std::cout << "Output NOT found: " << outFile << " after running main" << std::endl;
-				}
-			}
-		}
-	}
-	closedir(dir);
+        for (int exec = 1; exec <= repeticoes; ++exec)
+        {
+            const std::string numExec = std::to_string(exec);
+            std::cout << exec << " Execucao: " << diretorioInstancias << nomeInstancia << std::endl;
 
-	std::cout << "Generating summary in: " << solucoesPath << std::endl;
-	DIR *dir2 = opendir(solucoesPath.c_str());
-	if (dir2 == nullptr)
-	{
-		std::cerr << "Could not open solucoes directory for summary: " << strerror(errno) << std::endl;
-	}
-	else
-	{
-		std::ifstream file;
-		std::ofstream fileR;
-		std::string resumoPath = solucoesPath + "/RESUMO.csv";
-		fileR.open(resumoPath.c_str());
-		if (!fileR.is_open())
-		{
-			std::cerr << "Failed to open resumo file for writing: " << resumoPath << std::endl;
-		}
-		else
-		{
-			fileR << "RE_INSERTION,INSERTION_IM,TWO_SWAP,LIMITE_SEM_MELHORIA,PERCENTUAL_PERTURBACAO,LIMITE_TEMPO_HORAS" << std::endl;
-			fileR << Configuracao::RE_INSERTION << ","
-				  << Configuracao::INSERTION_IM << ","
-				  << Configuracao::TWO_SWAP << ","
-				  << Configuracao::LIMITE_ITERACOES_SEM_MELHORIA << ","
-				  << Configuracao::PERCENTUAL_PERTURBACAO << ","
-				  << Configuracao::LIMITE_TEMPO_HORAS << std::endl;
-			fileR << std::endl;
-			fileR << "Arquivo,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s)" << std::endl;
+            const std::string arquivoSaida = caminhoSolucoes + "/SAIDA_" + numExec + "_" + nomeInstancia;
+            struct stat statusSaida{};
+            if (stat(arquivoSaida.c_str(), &statusSaida) == 0)
+            {
+                if (statusSaida.st_size > 0)
+                {
+                    std::cout << "Essa execução terminou (size=" << statusSaida.st_size << "). Pulando para a próxima." << std::endl;
+                    continue;
+                }
+                std::cout << "Arquivo de saída vazio detectado (size=0). Reexecutando: " << arquivoSaida << std::endl;
+            }
 
-			struct dirent *ent2;
-			while ((ent2 = readdir(dir2)) != nullptr)
-			{
-				if (ent2->d_type == isFile)
-				{
-					std::string nomeArq = ent2->d_name;
-					if (nomeArq == "RESUMO.csv" || nomeArq.rfind("SAIDA_", 0) != 0)
-						continue;
-					std::string filePath = solucoesPath + "/" + nomeArq;
-					file.open(filePath.c_str(), std::ifstream::in);
-					if (!file.is_open())
-						continue;
+            const std::string cmd = "./Main \"" + arquivoSaida + "\" \"" + caminhoMatrizes + "\" \"" +
+                                    nomeInstancia + "\" \"" + numExec + "\" <\"" +
+                                    diretorioInstancias + nomeInstancia + "\"";
+            std::cout << "Running: " << cmd << std::endl;
 
-					std::string line;
-					std::string instance, inicial_sol,sol_insertion, sol_insertionIM, sol_twoSwap, tempo_sol, ils;
-					int o, m, t, c;
-					if (!std::getline(file, line))
-					{
-						file.close();
-						std::cout << "Não leu as linhas" << std::endl;
-						continue;
-					}
+            const int codigoRetorno = std::system(cmd.c_str());
+            std::cout << "Return code: " << codigoRetorno << " for output file: " << arquivoSaida << std::endl;
 
-					if (!std::getline(file, line)) // linha de dados
-					{
-						file.close();
-						continue;
-					}
+            if (stat(arquivoSaida.c_str(), &statusSaida) == 0)
+                std::cout << "Output created: " << arquivoSaida << " (size=" << statusSaida.st_size << ")" << std::endl;
+            else
+                std::cout << "Output NOT found: " << arquivoSaida << " after running main" << std::endl;
+        }
+    }
+    closedir(dirInstancias);
 
-					std::replace(line.begin(), line.end(), ',', ' ');
-					std::istringstream iss(line);
-					if (iss >> instance >> o >> m >> t >> c >> inicial_sol >> ils >> tempo_sol)
-					{
-						fileR << nomeArq
-							  << "," << instance
-							  << "," << o
-							  << "," << m
-							  << "," << t
-							  << "," << c
-							  << "," << inicial_sol
-							  << "," << ils
-							/*   << "," << sol_insertion
-							  << "," << sol_insertionIM
-							  << "," << sol_twoSwap */
-							  << "," << tempo_sol
-							  << std::endl;
-					}
-					file.close();
-				}
-			}
-			fileR.close();
-			std::cout << "Summary written to: " << resumoPath << std::endl;
-			std::cout << "Final matrices written to: " << matrizPath << std::endl;
-		}
-		closedir(dir2);
-	}
-	return 0;
+    gerarResumoCsv(diretorioInstancias, caminhoSolucoes, caminhoMatrizes);
+    return 0;
 }

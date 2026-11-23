@@ -2,45 +2,29 @@
 #define BUSCAS_H
 
 #include <chrono>
-#include <map>
-#include <ostream>
+#include <utility>
 #include <vector>
-#include "ObjectiveFunction.h"
 #include "Operation.h"
 
-using namespace std::chrono;
+extern std::chrono::high_resolution_clock::time_point inicioExecucao;
 
-extern high_resolution_clock::time_point t1;
-extern high_resolution_clock::time_point t2;
-extern std::chrono::high_resolution_clock::duration tempo_execucao;
+double perturbacao_enviesada(std::vector<std::vector<Operation>> &solucaoMaquinas,
+                             const std::vector<Operation> &operacoes,
+                             std::vector<double> &atrasoPorMaquina,
+                             const std::vector<std::pair<int, Operation>> &operacoesEmEspera,
+                             int qtdPerturbacoes);
 
-double pertubacao_enviesada(std::vector<std::vector<Operation>> &maquina,
-                            std::vector<Operation> &vetOperacoes,
-                            std::map<int, std::map<int, int>> &controleOp,
-                            std::vector<double> &tardiness_maq,
-                            const std::vector<std::pair<int, Operation>> &ops_emEspera,
-                            int num_ops);
+double re_insertion(std::vector<std::vector<Operation>> &solucaoMaquinas,
+                    const std::vector<Operation> &operacoes,
+                    std::vector<double> &atrasoPorMaquina);
 
-double pertubacao(std::vector<std::vector<Operation>> &maquina,
-                  std::vector<Operation> &vetOperacoes,
-                  std::map<int, std::map<int, int>> &controleOp,
-                  std::vector<double> &tardiness_maq,
-                  int o);
+double insertion_im(std::vector<std::vector<Operation>> &solucaoMaquinas,
+                    const std::vector<Operation> &operacoes,
+                    std::vector<double> &atrasoPorMaquina);
 
-double re_insertion(std::vector<std::vector<Operation>> &maquina,
-                    std::vector<Operation> &vetOperacoes,
-                    std::map<int, std::map<int, int>> &controleOp,
-                    std::vector<double> &tardiness_maq);
-
-double insertion_im(std::vector<std::vector<Operation>> &maquina,
-                    std::vector<Operation> &vetOperacoes,
-                    std::map<int, std::map<int, int>> &controleOp,
-                    std::vector<double> &tardiness_maq);
-
-double two_swap(std::vector<std::vector<Operation>> &maquina,
-                std::vector<Operation> &vetOperacoes,
-                std::map<int, std::map<int, int>> &controleOp,
-                std::vector<double> &tardiness_maq);
+double two_swap(std::vector<std::vector<Operation>> &solucaoMaquinas,
+                const std::vector<Operation> &operacoes,
+                std::vector<double> &atrasoPorMaquina);
 
 double ILS(int usarReInsertion,
            int usarInsertionIm,
@@ -48,10 +32,9 @@ double ILS(int usarReInsertion,
            int limiteIteracoesSemMelhoria,
            double percentualPerturbacao,
            int limiteTempoHoras,
-           std::vector<std::vector<Operation>> &maquina,
-           std::vector<Operation> &vetOperacoes,
-           std::map<int, std::map<int, int>> &controleOp,
-           std::vector<double> &tardiness_maq,
+           std::vector<std::vector<Operation>> &solucaoMaquinas,
+           const std::vector<Operation> &operacoes,
+           std::vector<double> &atrasoPorMaquina,
            int totalOperacoes);
 
 #endif

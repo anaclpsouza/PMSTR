@@ -1,14 +1,21 @@
 #include "ObjectiveFunction.h"
-#include <iostream>
-#include <vector>
-#include <algorithm>
-#include <map>
-#include <cstdlib>
 #include "Operation.h"
-#include <climits>
-#include <limits>
 
-using namespace std;
+#include <algorithm>
+#include <climits>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <map>
+#include <utility>
+#include <vector>
+
+EstatisticasKTNS estatisticasKtns;
+
+void resetarEstatisticasKtns()
+{
+    estatisticasKtns = {0, 0, 0};
+}
 
 static inline bool objectiveDebugEnabled()
 {
@@ -16,329 +23,374 @@ static inline bool objectiveDebugEnabled()
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
-int maquinaPai(int idJob, int idOpPai, const std::vector<std::vector<Operation>> &maquina) {
-   for (int i = 0; i < maquina.size(); ++i) {
-        auto it = std::find_if(maquina[i].begin(), maquina[i].end(), [idJob, idOpPai](const Operation& op) {
-            return op.idJob == idJob && op.idOp == idOpPai;
-        });
-
-        if (it != maquina[i].end()) {
-            return i;
-        }
-   }
-   return -1;
+static int encontrarMaquinaPredecessora(int idJob,
+                                       int idOpPredecessora,
+                                       const std::vector<std::vector<Operation>> &solucaoMaquinas)
+{
+    for (int maq = 0; maq < static_cast<int>(solucaoMaquinas.size()); ++maq)
+    {
+        auto it = std::find_if(solucaoMaquinas[maq].begin(),
+                               solucaoMaquinas[maq].end(),
+                               [idJob, idOpPredecessora](const Operation &op)
+                               {
+                                   return op.idJob == idJob && op.idOp == idOpPredecessora;
+                               });
+        if (it != solucaoMaquinas[maq].end())
+            return maq;
+    }
+    return -1;
 }
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
-                         const std::vector<Operation> &vetOperacoes,
-                         const std::map<int, std::map<int, int>> &controleOp,
-                         std::vector<double> &tardiness_maq,
-                         std::vector<std::string> *details,
-                         std::vector<std::pair<int, Operation>> *out_espera)
+static bool possuiCicloDependencia(const std::vector<int> &esperandoMaquina)
 {
-    if (maquina.empty())
+    // 0 = não visitado, 1 = na pilha de recursão, 2 = concluído
+    std::vector<int> estado(esperandoMaquina.size(), 0);
+
+    for (size_t inicio = 0; inicio < esperandoMaquina.size(); ++inicio)
+    {
+        if (estado[inicio] != 0)
+            continue;
+
+        int atual = static_cast<int>(inicio);
+        while (atual != -1 && estado[atual] != 2)
+        {
+            if (estado[atual] == 1)
+                return true;
+            estado[atual] = 1;
+            atual = esperandoMaquina[atual];
+        }
+
+        atual = static_cast<int>(inicio);
+        while (atual != -1 && estado[atual] == 1)
+        {
+            estado[atual] = 2;
+            atual = esperandoMaquina[atual];
+        }
+    }
+
+    return false;
+}
+
+static int selecionarFerramentaParaRemover(bool usarKtnsNovo,
+                                           int estagioAtual,
+                                           const std::vector<int> &carregadas,
+                                           const std::vector<std::vector<int>> &usoNoEstagio,
+                                           const std::vector<std::vector<int>> &prioridadesMaquina,
+                                           const std::vector<int> &tamanhoConjuntos)
+{
+    int ferramentaEscolhida = -1;
+
+    if (usarKtnsNovo)
+    {
+        // Adaptação do KTNS considerando o tamanho das ferramentas:
+        // como a remoção tem custo 0 e cada reinserção futura custa 1 setup,
+        // remover ferramentas maiores evita expulsar múltiplas ferramentas menores.
+        int maiorTamanhoSemUsoFuturo = -1;
+        int maiorTamanhoComUsoFuturo = -1;
+        int maiorDistanciaDesempate = -1;
+
+        for (int tool = 0; tool < numConjuntosFerramentas; ++tool)
+        {
+            if (usoNoEstagio[tool][estagioAtual] == 1 || carregadas[tool] == 0)
+                continue;
+
+            const int distancia = prioridadesMaquina[tool][estagioAtual];
+            const int tamanho = tamanhoConjuntos[tool];
+
+            if (distancia == -1)
+            {
+                if (tamanho > maiorTamanhoSemUsoFuturo)
+                {
+                    maiorTamanhoSemUsoFuturo = tamanho;
+                    ferramentaEscolhida = tool;
+                }
+            }
+            else if (maiorTamanhoSemUsoFuturo == -1)
+            {
+                if (tamanho > maiorTamanhoComUsoFuturo ||
+                    (tamanho == maiorTamanhoComUsoFuturo && distancia > maiorDistanciaDesempate))
+                {
+                    maiorTamanhoComUsoFuturo = tamanho;
+                    maiorDistanciaDesempate = distancia;
+                    ferramentaEscolhida = tool;
+                }
+            }
+        }
+        return ferramentaEscolhida;
+    }
+
+    // KTNS original: prioriza ferramentas sem uso futuro (-1) ou com maior distância até o próximo uso.
+    int maiorDistancia = 0;
+    for (int tool = 0; tool < numConjuntosFerramentas; ++tool)
+    {
+        if (usoNoEstagio[tool][estagioAtual] == 1 || carregadas[tool] == 0)
+            continue;
+
+        const int distancia = prioridadesMaquina[tool][estagioAtual];
+        if (distancia == -1)
+            return tool;
+
+        if (distancia > maiorDistancia)
+        {
+            maiorDistancia = distancia;
+            ferramentaEscolhida = tool;
+        }
+    }
+
+    return ferramentaEscolhida;
+}
+
+double objectiveFunction(const std::vector<std::vector<Operation>> &solucaoMaquinas,
+                         const std::vector<Operation> &operacoes,
+                         std::vector<double> &atrasoPorMaquina,
+                         std::vector<std::pair<int, Operation>> *operacoesEmEspera)
+{
+    if (solucaoMaquinas.empty())
     {
         if (objectiveDebugEnabled())
             std::cout << "[DEBUG] Lista de maquinas vazia." << std::endl;
         return 0.0;
     }
 
-    if (objectiveDebugEnabled())
-    {
-        cout << "[DEBUG] Validando na função objetivo" << endl;
-    }
-    
-
-    if (vetOperacoes.size() != o)
-    {
+    if (static_cast<int>(operacoes.size()) != numOperacoes)
         return INT_MAX;
-    }
 
-    // conferindo a regra de precedência na mesma máquina de uma vez
-    for (int i = 0; i < m; ++i)
+    // Valida a precedência entre operações do mesmo job alocadas na mesma máquina.
+    for (int maq = 0; maq < numMaquinas; ++maq)
     {
-        std::map<int, int> ultimaOpDoJob;
-        for (const auto &op : maquina[i])
+        std::map<int, int> ultimaOpPorJob;
+        for (const auto &op : solucaoMaquinas[maq])
         {
-            if (ultimaOpDoJob.count(op.idJob) && ultimaOpDoJob[op.idJob] > op.idOp)
-            {
+            if (ultimaOpPorJob.count(op.idJob) && ultimaOpPorJob[op.idJob] > op.idOp)
                 return INT_MAX;
-            }
-            ultimaOpDoJob[op.idJob] = op.idOp;
+            ultimaOpPorJob[op.idJob] = op.idOp;
         }
     }
 
-    double wd = 1.0;  // Peso do atraso
-    double ws = 1.0;  // Peso da troca
-    double tau = 1.0; // Tempo de troca (1 hora)
+    constexpr double pesoAtraso = 1.0;
+    constexpr double pesoTroca = 1.0;
+    constexpr double duracaoTroca = 1.0;
 
-    int setups = 0;
-    double tardiness = 0.0;
-    vector<double> tempo(m, 0.0);
-    tardiness_maq.assign(m, 0.0);
+    atrasoPorMaquina.assign(numMaquinas, 0.0);
 
-    vector<int> u(m, 0); // quantidade de ferramentas atualmente carregadas
-    vector<vector<int>> carregados(m, vector<int>(t, 0));
-    vector<vector<vector<int>>> magazine(m, vector<vector<int>>(t, vector<int>())); // magazine de presença de ferramentas
-    vector<vector<vector<int>>> prioridades(m, vector<vector<int>>(t, vector<int>()));
-
-    vector<int> setsSize(t);
     int maxJobId = 0;
     int maxOpId = 0;
-
-    for (const auto &op : vetOperacoes)
+    for (const auto &op : operacoes)
     {
-        if (op.idJob > maxJobId)
-            maxJobId = op.idJob;
-        if (op.idOp > maxOpId)
-            maxOpId = op.idOp;
+        maxJobId = std::max(maxJobId, op.idJob);
+        maxOpId = std::max(maxOpId, op.idOp);
     }
 
-    std::vector<std::vector<double>> tempo_final(maxJobId + 1,
-                                                 std::vector<double>(maxOpId + 1, std::numeric_limits<double>::max()));
+    std::vector<int> tamanhoConjuntos(numConjuntosFerramentas, 0);
+    std::vector<std::vector<std::vector<int>>> magazine(numMaquinas);
+    std::vector<std::vector<std::vector<int>>> prioridades(numMaquinas);
+    std::vector<int> espacoOcupadoInicial(numMaquinas, 0);
+    std::vector<std::vector<int>> carregadosInicial(numMaquinas, std::vector<int>(numConjuntosFerramentas, 0));
 
-    for (int i = 0; i < m; ++i)
+    for (int maq = 0; maq < numMaquinas; ++maq)
     {
-        for (int j = 0; j < maquina[i].size(); j++)
-        {
-            setsSize[maquina[i][j].toolSetId] = maquina[i][j].toolSetSize;
-        }
-    }
+        const int numOpsMaq = static_cast<int>(solucaoMaquinas[maq].size());
+        magazine[maq].assign(numConjuntosFerramentas, std::vector<int>(numOpsMaq, 0));
+        prioridades[maq].assign(numConjuntosFerramentas, std::vector<int>(numOpsMaq, 0));
 
-    for (int i = 0; i < m; ++i)
-    {
-        for (int j = 0; j < t; j++)
+        for (int estagio = 0; estagio < numOpsMaq; ++estagio)
         {
-            for (int k = 0; k < maquina[i].size(); k++)
+            const Operation &op = solucaoMaquinas[maq][estagio];
+            tamanhoConjuntos[op.toolSetId] = op.toolSetSize;
+            magazine[maq][op.toolSetId][estagio] = 1;
+
+            if (carregadosInicial[maq][op.toolSetId] == 0 &&
+                espacoOcupadoInicial[maq] + op.toolSetSize <= capacidadeMagazine)
             {
-                magazine[i][j].push_back(0);
-                prioridades[i][j].push_back(0);
+                espacoOcupadoInicial[maq] += op.toolSetSize;
+                carregadosInicial[maq][op.toolSetId] = 1;
             }
         }
-    }
 
-    // Para cada máquina, para cada ferramenta usada pela operacao em cada estágio
-    for (int i = 0; i < m; ++i) // máquina
-    {
-        for (int j = 0; j < maquina[i].size(); ++j) // estágio do magazine
+        for (int tool = 0; tool < numConjuntosFerramentas; ++tool)
         {
-            magazine[i][maquina[i][j].toolSetId][j] = 1;
-        }
-    }
-
-    for (int k = 0; k < m; ++k) // máquina
-    {
-        for (unsigned i = 0; i < t; ++i) // ferramenta
-        {
-            for (unsigned j = 0; j < maquina[k].size(); ++j) // operação
+            for (int estagio = 0; estagio < numOpsMaq; ++estagio)
             {
-                if (magazine[k][i][j] == 1) // se o estágio atual precisa daquela ferramenta, prioridade zero
-                    prioridades[k][i][j] = 0;
-                else
+                if (magazine[maq][tool][estagio] == 1)
                 {
-                    int proxima = 0;
-                    bool usa = false;
-                    for (unsigned l = j + 1; l < maquina[k].size(); ++l)
-                    {
-                        ++proxima;
-                        if (magazine[k][i][l] == 1)
-                        {
-                            usa = true;
-                            break;
-                        }
-                    }
-                    if (usa)
-                        prioridades[k][i][j] = proxima;
-                    else
-                        prioridades[k][i][j] = -1;
-                }
-            }
-        }
-    }
-
-    for (int j = 0; j < m; ++j) // maquina
-    {
-        for (int i = 0; i < maquina[j].size(); i++) // operacao
-        {
-            if (carregados[j][maquina[j][i].toolSetId] == 0 && u[j] + maquina[j][i].toolSetSize <= c)
-            {
-                u[j] += maquina[j][i].toolSetSize;
-                carregados[j][maquina[j][i].toolSetId] = 1;
-            }
-        }
-    }
-
-    int max_op = 0;
-    for (int i = 0; i < maquina.size(); ++i)
-    {
-        if (maquina[i].size() > max_op)
-            max_op = maquina[i].size();
-    }
-
-    std::vector<int> idxPorMaquina(maquina.size(), 0);
-    vector<int> esperandoPorQuem(maquina.size(), -1);
-    
-    bool acabei = false;
-    while (!acabei)
-    {
-        acabei = true;
-        for (int i = 0; i < maquina.size(); ++i)
-        {
-            if (idxPorMaquina[i] < maquina[i].size())
-            {
-
-                if (objectiveDebugEnabled())
-                {
-                    cout << "[DEBUG] Operações processadas na máquina " << i << " " << idxPorMaquina[i] << endl;
-                    cout << "[DEBUG] Operações totais: " << maquina[i].size() << endl;
-                }
-
-                acabei = false;
-                break;
-            }
-        }
-        if (acabei)
-        {
-            if (objectiveDebugEnabled()) cout << "[DEBUG] terminei as operações de todas as máquina " << endl;
-            break;
-        }
-
-        bool algumaProcessou = false;
-
-        for (int i = 0; i < maquina.size(); i++) // máquinas
-        {
-            int j = idxPorMaquina[i];
-
-            if (j >= maquina[i].size())
-                continue;
-
-            int idJob = maquina[i][j].idJob;
-            int idOp = maquina[i][j].idOp;
-            bool troca = false;
-
-            double tempoPai = 0.0;
-            if (idOp > 1)
-            {
-                tempoPai = tempo_final[idJob][idOp - 1];
-
-                if (tempoPai >= std::numeric_limits<double>::max())
-                {
-                    if (objectiveDebugEnabled())
-                    {
-                        cout << "[DEBUG] Máquina em espera: " << i << " com a operação " << idxPorMaquina[i] << endl;
-                    }
-                    esperandoPorQuem[i] = maquinaPai(idJob, idOp - 1, maquina);
-                    if (esperandoPorQuem[i] == -1 || esperandoPorQuem[i] == i)
-                    {
-                        return INT_MAX;
-                    }
-                    vector<int> estado(esperandoPorQuem.size(), 0);
-
-                    if (out_espera != nullptr)
-                    {
-                        out_espera->push_back(std::make_pair(i, maquina[i][j]));
-                    }
-                    
-                    for (int z = 0; z < esperandoPorQuem.size(); z++){
-                        if (estado[z] ==0){
-                            int atual = z;
-                            while (atual != -1 && estado[atual]!=2){
-                                if (estado[atual] == 1){
-                                    if (objectiveDebugEnabled()) cout << "[DEBUG] ACHEI UM CICLO E INVALIDEI A SOLUCAO" << endl;
-                                    return INT_MAX;
-                                }
-                                estado[atual] = 1;
-                                atual = esperandoPorQuem[atual];
-                            }
-                            atual = z;
-                            while(atual != -1 && estado[atual]==1){
-                                estado[atual] = 2;
-                                atual = esperandoPorQuem[atual];
-                            }
-                        }    
-                    }
-
+                    prioridades[maq][tool][estagio] = 0;
                     continue;
                 }
-            }
 
-            if (objectiveDebugEnabled())
-            {
-                cout << "[DEBUG] Máquina em processamento: " << i << " com a operação " << idxPorMaquina[i] << " de " << maquina[i].size() << " totais" << endl;
-            }
-
-            esperandoPorQuem[i] = -1;
-            idxPorMaquina[i]++;
-            algumaProcessou = true;
-
-            // Cálculo do tempo considerando a espera
-            tempo[i] = std::max({tempo[i], tempoPai, (double)maquina[i][j].releaseTime});
-
-            if (carregados[i][maquina[i][j].toolSetId] == 0)
-            {
-                u[i] += maquina[i][j].toolSetSize;
-                carregados[i][maquina[i][j].toolSetId] = 1; // carrega a ferramenta necessária para a operação atual
-                troca = true;
-                
-                // criar critério de desempate para prioridades iguais a partir do tamanho da ferramenta
-                while (u[i] > c)
+                int distancia = 0;
+                bool temUsoFuturo = false;
+                for (int futuro = estagio + 1; futuro < numOpsMaq; ++futuro)
                 {
-                    int maior = 0;
-                    int pMaior = -1;
-
-                    for (unsigned k = 0; k < t; ++k) // ferramentas
+                    ++distancia;
+                    if (magazine[maq][tool][futuro] == 1)
                     {
-                        if (magazine[i][k][j] != 1) // matriz de ferramentas
-                        {
-                            if ((carregados[i][k] == 1) && (prioridades[i][k][j] == -1))
-                            {
-                                pMaior = k;
-                                break;
-                            }
-                            else
-                            {
-                                if ((prioridades[i][k][j] > maior) && carregados[i][k] == 1)
-                                {
-                                    maior = prioridades[i][k][j];
-                                    pMaior = k;
-                                }
-                            }
-                        }
+                        temUsoFuturo = true;
+                        break;
                     }
-                    if (pMaior == -1)
-                        return INT_MAX;
-                    carregados[i][pMaior] = 0;
-                    u[i] -= setsSize[pMaior];
                 }
+                prioridades[maq][tool][estagio] = temUsoFuturo ? distancia : -1;
             }
-            if (troca)
-            {
-                ++setups;
-                tempo[i] += tau;
-            }
-
-            tempo[i] += maquina[i][j].processingTime; // processa a operação (adiciona o processing time)
-
-            tempo_final[idJob][idOp] = tempo[i];
-
-            if (tempo[i] > maquina[i][j].dueDate)
-            {
-                double atraso = tempo[i] - maquina[i][j].dueDate;
-                tardiness_maq[i] += atraso; // Acumula na máquina específica
-                tardiness += atraso;
-            }
-        }
-
-        if (!algumaProcessou)
-        {
-            return INT_MAX;
         }
     }
 
-    if (objectiveDebugEnabled())
-        std::cout << "[DEBUG] Tardiness final: " << tardiness << std::endl;
-    double resultado = (wd * tardiness) + (ws * tau * setups);
-    if (objectiveDebugEnabled())
-        std::cout << "[DEBUG] Total setups=" << setups << std::endl;
-    return resultado;
+    auto simularKtns = [&](bool usarKtnsNovo,
+                           std::vector<double> &atrasoOut,
+                           std::vector<std::pair<int, Operation>> *esperaOut) -> double
+    {
+        int totalTrocas = 0;
+        double atrasoTotal = 0.0;
+        std::vector<double> tempoMaquina(numMaquinas, 0.0);
+        atrasoOut.assign(numMaquinas, 0.0);
+        if (esperaOut != nullptr)
+            esperaOut->clear();
+
+        std::vector<int> espacoOcupado = espacoOcupadoInicial;
+        std::vector<std::vector<int>> carregados = carregadosInicial;
+        std::vector<std::vector<double>> tempoConclusao(
+            maxJobId + 1,
+            std::vector<double>(maxOpId + 1, std::numeric_limits<double>::max()));
+
+        std::vector<int> indiceOpPorMaquina(solucaoMaquinas.size(), 0);
+        std::vector<int> esperandoMaquina(solucaoMaquinas.size(), -1);
+
+        while (true)
+        {
+            bool todasConcluidas = true;
+            for (size_t maq = 0; maq < solucaoMaquinas.size(); ++maq)
+            {
+                if (indiceOpPorMaquina[maq] < static_cast<int>(solucaoMaquinas[maq].size()))
+                {
+                    todasConcluidas = false;
+                    break;
+                }
+            }
+            if (todasConcluidas)
+                break;
+
+            bool algumaProcessou = false;
+
+            for (int maq = 0; maq < static_cast<int>(solucaoMaquinas.size()); ++maq)
+            {
+                const int estagio = indiceOpPorMaquina[maq];
+                if (estagio >= static_cast<int>(solucaoMaquinas[maq].size()))
+                    continue;
+
+                const Operation &op = solucaoMaquinas[maq][estagio];
+                double tempoPredecessora = 0.0;
+
+                if (op.idOp > 1)
+                {
+                    tempoPredecessora = tempoConclusao[op.idJob][op.idOp - 1];
+
+                    if (tempoPredecessora >= std::numeric_limits<double>::max())
+                    {
+                        esperandoMaquina[maq] = encontrarMaquinaPredecessora(op.idJob, op.idOp - 1, solucaoMaquinas);
+                        if (esperandoMaquina[maq] == -1 || esperandoMaquina[maq] == maq)
+                            return INT_MAX;
+
+                        if (esperaOut != nullptr)
+                            esperaOut->emplace_back(maq, op);
+
+                        if (possuiCicloDependencia(esperandoMaquina))
+                        {
+                            if (objectiveDebugEnabled())
+                                std::cout << "[DEBUG] Ciclo de precedencia detectado." << std::endl;
+                            return INT_MAX;
+                        }
+                        continue;
+                    }
+                }
+
+                esperandoMaquina[maq] = -1;
+                ++indiceOpPorMaquina[maq];
+                algumaProcessou = true;
+
+                tempoMaquina[maq] = std::max({tempoMaquina[maq], tempoPredecessora, op.releaseTime});
+
+                if (carregados[maq][op.toolSetId] == 0)
+                {
+                    espacoOcupado[maq] += op.toolSetSize;
+                    carregados[maq][op.toolSetId] = 1;
+
+                    while (espacoOcupado[maq] > capacidadeMagazine)
+                    {
+                        const int ferramentaRemover = selecionarFerramentaParaRemover(
+                            usarKtnsNovo,
+                            estagio,
+                            carregados[maq],
+                            magazine[maq],
+                            prioridades[maq],
+                            tamanhoConjuntos);
+
+                        if (ferramentaRemover == -1)
+                            return INT_MAX;
+
+                        carregados[maq][ferramentaRemover] = 0;
+                        espacoOcupado[maq] -= tamanhoConjuntos[ferramentaRemover];
+                    }
+
+                    ++totalTrocas;
+                    tempoMaquina[maq] += duracaoTroca;
+                }
+
+                tempoMaquina[maq] += op.processingTime;
+                tempoConclusao[op.idJob][op.idOp] = tempoMaquina[maq];
+
+                if (tempoMaquina[maq] > op.dueDate)
+                {
+                    const double atraso = tempoMaquina[maq] - op.dueDate;
+                    atrasoOut[maq] += atraso;
+                    atrasoTotal += atraso;
+                }
+            }
+
+            if (!algumaProcessou)
+                return INT_MAX;
+        }
+
+        if (objectiveDebugEnabled())
+        {
+            std::cout << "[DEBUG] Tardiness=" << atrasoTotal
+                      << " | Setups=" << totalTrocas << std::endl;
+        }
+        return (pesoAtraso * atrasoTotal) + (pesoTroca * duracaoTroca * totalTrocas);
+    };
+
+    std::vector<double> atrasoAntigo;
+    std::vector<std::pair<int, Operation>> esperaAntigo;
+
+    const double resultadoAntigo = simularKtns(
+        false,
+        atrasoAntigo,
+        operacoesEmEspera != nullptr ? &esperaAntigo : nullptr);
+
+    if (resultadoAntigo == INT_MAX)
+        return INT_MAX;
+
+    std::vector<double> atrasoNovo;
+    std::vector<std::pair<int, Operation>> esperaNovo;
+    const double resultadoNovo = simularKtns(
+        true,
+        atrasoNovo,
+        operacoesEmEspera != nullptr ? &esperaNovo : nullptr);
+
+    auto aplicarVencedor = [&](long long &contadorVitorias,
+                               std::vector<double> &atrasoVencedor,
+                               std::vector<std::pair<int, Operation>> &esperaVencedora,
+                               double valorVencedor)
+    {
+        ++contadorVitorias;
+        atrasoPorMaquina = std::move(atrasoVencedor);
+        if (operacoesEmEspera != nullptr)
+            *operacoesEmEspera = std::move(esperaVencedora);
+        return valorVencedor;
+    };
+
+    if (resultadoNovo == INT_MAX || resultadoAntigo < resultadoNovo)
+        return aplicarVencedor(estatisticasKtns.ktnsAntigo, atrasoAntigo, esperaAntigo, resultadoAntigo);
+
+    if (resultadoNovo < resultadoAntigo)
+        return aplicarVencedor(estatisticasKtns.ktnsNovo, atrasoNovo, esperaNovo, resultadoNovo);
+
+    return aplicarVencedor(estatisticasKtns.empates, atrasoNovo, esperaNovo, resultadoNovo);
 }

@@ -2,21 +2,27 @@
 #define OBJECTIVEFUNCTION_H
 
 #include "Operation.h"
-#include <vector>
-#include <map>
-#include <string>
 #include <utility>
+#include <vector>
 
-extern int m;
-extern int o;
-extern int t;
-extern int c;
+extern int numMaquinas;
+extern int numOperacoes;
+extern int numConjuntosFerramentas;
+extern int capacidadeMagazine;
 
-double objectiveFunction(const std::vector<std::vector<Operation>> &maquina,
-                         const std::vector<Operation> &vetOperacoes,
-                         const std::map<int, std::map<int, int>> &controleOp_base,
-                         std::vector<double> &tardiness_maq,
-                         std::vector<std::string> *details = nullptr,
-                         std::vector<std::pair<int, Operation>> *out_espera = nullptr);
+struct EstatisticasKTNS
+{
+    long long ktnsAntigo = 0;
+    long long ktnsNovo = 0;
+    long long empates = 0;
+};
+
+extern EstatisticasKTNS estatisticasKtns;
+void resetarEstatisticasKtns();
+
+double objectiveFunction(const std::vector<std::vector<Operation>> &solucaoMaquinas,
+                         const std::vector<Operation> &operacoes,
+                         std::vector<double> &atrasoPorMaquina,
+                         std::vector<std::pair<int, Operation>> *operacoesEmEspera = nullptr);
 
 #endif
