@@ -1,228 +1,25 @@
-
-#include <iostream>
-#include <climits>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <fstream>
-#include <algorithm>
-#include <map>
-#include "Operation.h"
-#include "ObjectiveFunction.h"
-#include <chrono>
-#include <deque>
-#include <random>
 #include "Buscas.h"
 #include "Configuracao.h"
+#include "ObjectiveFunction.h"
+#include "Operation.h"
 
-using namespace std;
-using namespace std::chrono;
+#include <algorithm>
+#include <chrono>
+#include <climits>
+#include <deque>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <random>
+#include <sstream>
+#include <string>
+#include <vector>
 
-std::ofstream fileSolution;
-int m, o, t, c;
+int numMaquinas = 0;
+int numOperacoes = 0;
+int numConjuntosFerramentas = 0;
+int capacidadeMagazine = 0;
 std::vector<std::vector<Operation>> maquinas;
-
-void escreverMatrizFinalCompilada(const std::string &caminhoArquivo, const std::string &nomeInstancia, const std::string &execucao)
-{
-    std::ofstream out(caminhoArquivo, std::ios::app);
-    if (!out.is_open())
-    {
-        return;
-    }
-
-    out << "Execucao: " << execucao << endl;
-    out << "Instancia: " << nomeInstancia << endl;
-    for (size_t maq = 0; maq < maquinas.size(); ++maq)
-    {
-        out << "M" << (maq + 1) << ":";
-        for (const auto &op : maquinas[maq])
-        {
-            out << " J" << op.idJob << "-O" << op.idOp;
-        }
-        out << endl;
-    }
-    out << endl;
-}
-
-/* faz um aleatorio por tarefa. Ordena as Tarefas (a tarefa leva suas operações junto) aleatoriamente, e distribui um para cada máquina. Se uma tarefa foi, todas as operacoes foi. Depois que cada máquina recebeu uma, a próxima tarefa vai para a máquina com o menor completion time calculado como soma do tempo de processamento da tarefa (que é, somatorio do release time de cada operacao + tempo de processamento). Repete até que todas as tarefas tenham sido alocadas. */
-
-void distInicial(std::map<int, std::deque<Operation>> tarefas)
-{
-    std::vector<int> tarefasDisponiveis;
-
-    for (auto const &[id, fila] : tarefas)
-    {
-        tarefasDisponiveis.push_back(id);
-    }
-
-    if (tarefasDisponiveis.empty() || m <= 0)
-    {
-        return;
-    }
-
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(tarefasDisponiveis.begin(), tarefasDisponiveis.end(), g);
-
-    auto cargaTarefa = [&](int idJob)
-    {
-        double soma = 0.0;
-        const auto &ops = tarefas[idJob];
-
-        for (const auto &op : ops)
-        {
-            soma += op.releaseTime + op.processingTime;
-        }
-
-        return soma;
-    };
-
-    std::vector<double> completionMaq(m, 0.0);
-    size_t idxTarefa = 0;
-
-    size_t tarefasIniciais = std::min((size_t)m, tarefasDisponiveis.size());
-    for (size_t maq = 0; maq < tarefasIniciais; ++maq)
-    {
-        int idJob = tarefasDisponiveis[idxTarefa++];
-        auto &ops = tarefas[idJob];
-
-        maquinas[maq].insert(maquinas[maq].end(), ops.begin(), ops.end());
-        completionMaq[maq] += cargaTarefa(idJob);
-    }
-
-    while (idxTarefa < tarefasDisponiveis.size())
-    {
-        int melhorMaq = 0;
-        for (int maq = 1; maq < m; ++maq)
-        {
-            if (completionMaq[maq] < completionMaq[melhorMaq])
-            {
-                melhorMaq = maq;
-            }
-        }
-
-        int idJob = tarefasDisponiveis[idxTarefa++];
-        auto &ops = tarefas[idJob];
-
-        maquinas[melhorMaq].insert(maquinas[melhorMaq].end(), ops.begin(), ops.end());
-        completionMaq[melhorMaq] += cargaTarefa(idJob);
-    }
-}
-
-void enviesadaPorRelease(std::vector<Operation> tarefas)
-{
-    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
-              {
-                  if (a.releaseTime != b.releaseTime)
-                      return a.releaseTime < b.releaseTime;
-                  if (a.dueDate != b.dueDate)
-                      return a.dueDate < b.dueDate;
-                  if (a.idJob != b.idJob)
-                      return a.idJob < b.idJob;
-                  return a.idOp < b.idOp; });
-
-    std::vector<double> cargaProcessamento(m, 0.0);
-    std::map<int, int> maquinaPorJob;
-
-    auto menorCarga = [&]()
-    {
-        int melhorMaq = 0;
-        for (int maq = 1; maq < m; ++maq)
-        {
-            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
-            {
-                melhorMaq = maq;
-            }
-        }
-        return melhorMaq;
-    };
-
-    for (const auto &op : tarefas)
-    {
-        int maquinaEscolhida = -1;
-
-        if (op.idOp > 1)
-        {
-            auto it = maquinaPorJob.find(op.idJob);
-            if (it != maquinaPorJob.end())
-            {
-                maquinaEscolhida = it->second;
-            }
-        }
-
-        if (maquinaEscolhida < 0)
-        {
-            maquinaEscolhida = menorCarga();
-        }
-
-        maquinas[maquinaEscolhida].push_back(op);
-        cargaProcessamento[maquinaEscolhida] += op.processingTime;
-        maquinaPorJob[op.idJob] = maquinaEscolhida;
-    }
-}
-
-void enviesadaPorDueDate(std::vector<Operation> tarefas)
-{
-    std::sort(tarefas.begin(), tarefas.end(), [](const Operation &a, const Operation &b)
-              {
-                  if (a.dueDate != b.dueDate)
-                      return a.dueDate < b.dueDate;
-                  if (a.releaseTime != b.releaseTime)
-                      return a.releaseTime < b.releaseTime;
-                  if (a.idJob != b.idJob)
-                      return a.idJob < b.idJob;
-                  return a.idOp < b.idOp; });
-
-    std::vector<double> cargaProcessamento(m, 0.0);
-    std::map<int, int> maquinaPorJob;
-
-    auto menorCarga = [&]()
-    {
-        int melhorMaq = 0;
-        for (int maq = 1; maq < m; ++maq)
-        {
-            if (cargaProcessamento[maq] < cargaProcessamento[melhorMaq])
-            {
-                melhorMaq = maq;
-            }
-        }
-        return melhorMaq;
-    };
-
-    for (const auto &op : tarefas)
-    {
-        int maquinaEscolhida = -1;
-
-        if (op.idOp > 1)
-        {
-            auto it = maquinaPorJob.find(op.idJob);
-            if (it != maquinaPorJob.end())
-            {
-                maquinaEscolhida = it->second;
-            }
-        }
-
-        if (maquinaEscolhida < 0)
-        {
-            maquinaEscolhida = menorCarga();
-        }
-
-        maquinas[maquinaEscolhida].push_back(op);
-        cargaProcessamento[maquinaEscolhida] += op.processingTime;
-        maquinaPorJob[op.idJob] = maquinaEscolhida;
-    }
-}
-
-int parseHeaderValue(string line)
-{
-    replace(line.begin(), line.end(), ',', ' ');
-    stringstream ss(line);
-    ss.imbue(locale("C"));
-    string key;
-    int value;
-    ss >> key >> value;
-    return value;
-}
 
 struct IdentificacaoSaida
 {
@@ -231,213 +28,318 @@ struct IdentificacaoSaida
     std::string instancia;
 };
 
-IdentificacaoSaida extrairIdentificacao(int argsc, char *argv[], int m_val, int o_val)
+static void escreverMatrizFinalCompilada(const std::string &caminhoArquivo,
+                                         const std::string &nomeInstancia,
+                                         const std::string &execucao)
 {
-    std::string instanciaPadrao = std::to_string(m_val) + "M" + std::to_string(o_val);
+    std::ofstream out(caminhoArquivo, std::ios::app);
+    if (!out.is_open())
+        return;
+
+    out << "Execucao: " << execucao << '\n';
+    out << "Instancia: " << nomeInstancia << '\n';
+    for (size_t maq = 0; maq < maquinas.size(); ++maq)
+    {
+        out << "M" << (maq + 1) << ":";
+        for (const auto &op : maquinas[maq])
+            out << " J" << op.idJob << "-O" << op.idOp;
+        out << '\n';
+    }
+    out << '\n';
+}
+
+static int selecionarMaquinaMenorCarga(const std::vector<double> &cargaPorMaquina)
+{
+    int melhorMaq = 0;
+    for (int maq = 1; maq < numMaquinas; ++maq)
+    {
+        if (cargaPorMaquina[maq] < cargaPorMaquina[melhorMaq])
+            melhorMaq = maq;
+    }
+    return melhorMaq;
+}
+
+static void construirSolucaoAleatoriaPorJob(const std::map<int, std::deque<Operation>> &operacoesPorJob)
+{
+    std::vector<int> jobsDisponiveis;
+    jobsDisponiveis.reserve(operacoesPorJob.size());
+    for (const auto &[idJob, _] : operacoesPorJob)
+        jobsDisponiveis.push_back(idJob);
+
+    if (jobsDisponiveis.empty() || numMaquinas <= 0)
+        return;
+
+    std::mt19937 gerador(std::random_device{}());
+    std::shuffle(jobsDisponiveis.begin(), jobsDisponiveis.end(), gerador);
+
+    auto calcularCargaJob = [&](int idJob)
+    {
+        double soma = 0.0;
+        for (const auto &op : operacoesPorJob.at(idJob))
+            soma += op.releaseTime + op.processingTime;
+        return soma;
+    };
+
+    std::vector<double> cargaPorMaquina(numMaquinas, 0.0);
+    size_t idxJob = 0;
+
+    const size_t alocacaoInicial = std::min(static_cast<size_t>(numMaquinas), jobsDisponiveis.size());
+    for (size_t maq = 0; maq < alocacaoInicial; ++maq)
+    {
+        const int idJob = jobsDisponiveis[idxJob++];
+        const auto &ops = operacoesPorJob.at(idJob);
+        maquinas[maq].insert(maquinas[maq].end(), ops.begin(), ops.end());
+        cargaPorMaquina[maq] += calcularCargaJob(idJob);
+    }
+
+    while (idxJob < jobsDisponiveis.size())
+    {
+        const int melhorMaq = selecionarMaquinaMenorCarga(cargaPorMaquina);
+        const int idJob = jobsDisponiveis[idxJob++];
+        const auto &ops = operacoesPorJob.at(idJob);
+        maquinas[melhorMaq].insert(maquinas[melhorMaq].end(), ops.begin(), ops.end());
+        cargaPorMaquina[melhorMaq] += calcularCargaJob(idJob);
+    }
+}
+
+static void construirSolucaoEnviesada(std::vector<Operation> operacoes, bool priorizarDueDate)
+{
+    std::sort(operacoes.begin(), operacoes.end(), [priorizarDueDate](const Operation &a, const Operation &b)
+              {
+                  const double primarioA = priorizarDueDate ? a.dueDate : a.releaseTime;
+                  const double primarioB = priorizarDueDate ? b.dueDate : b.releaseTime;
+                  if (primarioA != primarioB)
+                      return primarioA < primarioB;
+
+                  const double secundarioA = priorizarDueDate ? a.releaseTime : a.dueDate;
+                  const double secundarioB = priorizarDueDate ? b.releaseTime : b.dueDate;
+                  if (secundarioA != secundarioB)
+                      return secundarioA < secundarioB;
+
+                  if (a.idJob != b.idJob)
+                      return a.idJob < b.idJob;
+                  return a.idOp < b.idOp;
+              });
+
+    std::vector<double> cargaProcessamento(numMaquinas, 0.0);
+    std::map<int, int> maquinaPorJob;
+
+    for (const auto &op : operacoes)
+    {
+        int maquinaEscolhida = -1;
+        if (op.idOp > 1)
+        {
+            auto it = maquinaPorJob.find(op.idJob);
+            if (it != maquinaPorJob.end())
+                maquinaEscolhida = it->second;
+        }
+
+        if (maquinaEscolhida < 0)
+            maquinaEscolhida = selecionarMaquinaMenorCarga(cargaProcessamento);
+
+        maquinas[maquinaEscolhida].push_back(op);
+        cargaProcessamento[maquinaEscolhida] += op.processingTime;
+        maquinaPorJob[op.idJob] = maquinaEscolhida;
+    }
+}
+
+static int extrairValorCabecalho(std::string linha)
+{
+    std::replace(linha.begin(), linha.end(), ',', ' ');
+    std::stringstream ss(linha);
+    ss.imbue(std::locale("C"));
+    std::string chave;
+    int valor = 0;
+    ss >> chave >> valor;
+    return valor;
+}
+
+static IdentificacaoSaida extrairIdentificacao(int argc, char *argv[], int maqs, int ops)
+{
+    const std::string instanciaPadrao = std::to_string(maqs) + "M" + std::to_string(ops);
     std::string execucao = "SAIDA_1";
     std::string nomeBaseInstancia;
 
-    auto removerDiretorioEExtensao = [](std::string s)
+    auto removerDiretorioEExtensao = [](std::string texto)
     {
-        size_t barra = s.find_last_of("/\\");
+        const size_t barra = texto.find_last_of("/\\");
         if (barra != std::string::npos)
-            s = s.substr(barra + 1);
-        if (s.size() >= 4 && s.substr(s.size() - 4) == ".csv")
-            s = s.substr(0, s.size() - 4);
-        return s;
+            texto = texto.substr(barra + 1);
+        if (texto.size() >= 4 && texto.substr(texto.size() - 4) == ".csv")
+            texto = texto.substr(0, texto.size() - 4);
+        return texto;
     };
 
-    if (argsc >= 5)
+    if (argc >= 5)
     {
-        std::string argExec = argv[4];
-        if (argExec.rfind("SAIDA_", 0) == 0)
-            execucao = argExec;
-        else
-            execucao = "SAIDA_" + argExec;
-
+        const std::string argExec = argv[4];
+        execucao = (argExec.rfind("SAIDA_", 0) == 0) ? argExec : ("SAIDA_" + argExec);
         nomeBaseInstancia = removerDiretorioEExtensao(argv[3]);
     }
     else
     {
-        std::string nomeArqSaida = removerDiretorioEExtensao(argv[1]);
-        if (nomeArqSaida.rfind("SAIDA_", 0) == 0)
+        const std::string nomeArquivoSaida = removerDiretorioEExtensao(argv[1]);
+        if (nomeArquivoSaida.rfind("SAIDA_", 0) == 0)
         {
-            size_t segundoUnderscore = nomeArqSaida.find('_', 6);
+            const size_t segundoUnderscore = nomeArquivoSaida.find('_', 6);
             if (segundoUnderscore != std::string::npos)
             {
-                execucao = nomeArqSaida.substr(0, segundoUnderscore);
-                nomeBaseInstancia = nomeArqSaida.substr(segundoUnderscore + 1);
+                execucao = nomeArquivoSaida.substr(0, segundoUnderscore);
+                nomeBaseInstancia = nomeArquivoSaida.substr(segundoUnderscore + 1);
             }
             else
             {
-                execucao = nomeArqSaida;
+                execucao = nomeArquivoSaida;
             }
         }
-        else if (!nomeArqSaida.empty())
+        else if (!nomeArquivoSaida.empty())
         {
-            execucao = nomeArqSaida;
+            execucao = nomeArquivoSaida;
         }
     }
 
     std::string cenario = "-";
     if (!nomeBaseInstancia.empty())
     {
-        size_t posUnderscore = nomeBaseInstancia.find('_');
-        if (posUnderscore != std::string::npos && posUnderscore + 1 < nomeBaseInstancia.size())
-        {
-            cenario = nomeBaseInstancia.substr(posUnderscore + 1);
-        }
-        else
-        {
-            cenario = nomeBaseInstancia;
-        }
+        const size_t posUnderscore = nomeBaseInstancia.find('_');
+        cenario = (posUnderscore != std::string::npos && posUnderscore + 1 < nomeBaseInstancia.size())
+                      ? nomeBaseInstancia.substr(posUnderscore + 1)
+                      : nomeBaseInstancia;
     }
 
     return {cenario, execucao, instanciaPadrao};
 }
 
-
-int main(int argsc, char *argv[])
+int main(int argc, char *argv[])
 {
-    if (argsc < 2)
+    if (argc < 2)
     {
         std::cerr << "Arquivo de saida nao informado." << std::endl;
         return 1;
     }
 
-    ios_base::sync_with_stdio(false);
-    cin.imbue(locale("C"));
+    std::ios_base::sync_with_stdio(false);
+    std::cin.imbue(std::locale("C"));
 
-    string line;
+    std::string linha;
+    if (std::getline(std::cin, linha))
+        numOperacoes = extrairValorCabecalho(linha);
+    if (std::getline(std::cin, linha))
+        numMaquinas = extrairValorCabecalho(linha);
+    if (std::getline(std::cin, linha))
+        numConjuntosFerramentas = extrairValorCabecalho(linha);
+    if (std::getline(std::cin, linha))
+        capacidadeMagazine = extrairValorCabecalho(linha);
 
-    if (getline(cin, line))
-        o = parseHeaderValue(line);
-    if (getline(cin, line))
-        m = parseHeaderValue(line);
-    if (getline(cin, line))
-        t = parseHeaderValue(line);
-    if (getline(cin, line))
-        c = parseHeaderValue(line);
+    // Descarta a linha em branco e o cabeçalho das colunas de operações.
+    std::getline(std::cin, linha);
+    std::getline(std::cin, linha);
 
-    getline(cin, line);
-    getline(cin, line);
+    std::vector<Operation> operacoes;
+    int idSequencial = 0;
 
-    std::vector<Operation> vetOperacao;
-    int i = 0;
-    std::map<int, std::map<int, int>> controleOp;
-
-    controleOp.clear();
-
-    while (getline(cin, line) && !line.empty())
+    while (std::getline(std::cin, linha) && !linha.empty())
     {
-        replace(line.begin(), line.end(), ',', ' ');
-        stringstream ss(line);
-        ss.imbue(locale("C"));
+        std::replace(linha.begin(), linha.end(), ',', ' ');
+        std::stringstream ss(linha);
+        ss.imbue(std::locale("C"));
 
-        int idJob, idOp, toolSetId, toolSetSize;
-        double releaseTime, processingTime, dueDate;
+        int idJob = 0;
+        int idOp = 0;
+        int toolSetId = 0;
+        int toolSetSize = 0;
+        double releaseTime = 0.0;
+        double processingTime = 0.0;
+        double dueDate = 0.0;
 
         ss >> idJob >> idOp >> releaseTime >> processingTime >> dueDate >> toolSetId >> toolSetSize;
-
         if (ss)
         {
-            Operation op(i, idJob, idOp, toolSetId - 1, toolSetSize, processingTime, dueDate, releaseTime);
-            vetOperacao.push_back(op);
-            controleOp[idJob][idOp] = 0;
-            i++;
+            operacoes.emplace_back(idSequencial++, idJob, idOp, toolSetId - 1, toolSetSize, processingTime, dueDate, releaseTime);
         }
     }
 
     resetarEstatisticasKtns();
-    t1 = high_resolution_clock::now();
+    inicioExecucao = std::chrono::high_resolution_clock::now();
 
-    std::vector<double> tardiness_maq;
-    std::map<int, std::deque<Operation>> tarefas;
-    for (const auto &op : vetOperacao)
-    {
-        tarefas[op.idJob].push_back(op);
-    }
+    std::map<int, std::deque<Operation>> operacoesPorJob;
+    for (const auto &op : operacoes)
+        operacoesPorJob[op.idJob].push_back(op);
 
-    double sol_inicial = INT_MAX;
-    std::vector<std::vector<Operation>> melhorMaquinas;
-    std::vector<double> melhorTardiness;
+    double solucaoInicial = INT_MAX;
+    std::vector<std::vector<Operation>> melhoresMaquinas;
+    std::vector<double> melhorAtrasoPorMaquina;
 
     auto avaliarSolucaoInicial = [&](auto gerarSolucao, bool repetirAteValida)
     {
         double valor = INT_MAX;
-        std::vector<double> tardinessCandidato;
+        std::vector<double> atrasoCandidato;
 
         do
         {
             maquinas.clear();
-            maquinas.resize(m);
+            maquinas.resize(numMaquinas);
             gerarSolucao();
-            valor = objectiveFunction(maquinas, vetOperacao, controleOp, tardinessCandidato);
+            valor = objectiveFunction(maquinas, operacoes, atrasoCandidato);
         } while (repetirAteValida && valor == INT_MAX);
 
-        if (valor != INT_MAX && valor < sol_inicial)
+        if (valor != INT_MAX && valor < solucaoInicial)
         {
-            sol_inicial = valor;
-            melhorMaquinas = maquinas;
-            melhorTardiness = tardinessCandidato;
+            solucaoInicial = valor;
+            melhoresMaquinas = maquinas;
+            melhorAtrasoPorMaquina = std::move(atrasoCandidato);
         }
     };
 
-    avaliarSolucaoInicial([&]() { distInicial(tarefas); }, true);
-    avaliarSolucaoInicial([&]() { enviesadaPorRelease(vetOperacao); }, false);
-    avaliarSolucaoInicial([&]() { enviesadaPorDueDate(vetOperacao); }, false);
+    avaliarSolucaoInicial([&]() { construirSolucaoAleatoriaPorJob(operacoesPorJob); }, true);
+    avaliarSolucaoInicial([&]() { construirSolucaoEnviesada(operacoes, false); }, false);
+    avaliarSolucaoInicial([&]() { construirSolucaoEnviesada(operacoes, true); }, false);
 
-    maquinas = melhorMaquinas;
-    tardiness_maq = melhorTardiness;
+    maquinas = std::move(melhoresMaquinas);
+    std::vector<double> atrasoPorMaquina = std::move(melhorAtrasoPorMaquina);
 
-    const auto params = Configuracao::obterParametros(m);
+    const auto params = Configuracao::obterParametros(numMaquinas);
+    const double solucaoIls = ILS(params.reInsertion,
+                                  params.insertionIm,
+                                  params.twoSwap,
+                                  params.limiteIteracoesSemMelhoria,
+                                  params.percentualPerturbacao,
+                                  params.limiteTempoHoras,
+                                  maquinas,
+                                  operacoes,
+                                  atrasoPorMaquina,
+                                  numOperacoes);
 
-    double ils = ILS(params.reInsertion,
-                     params.insertionIm,
-                     params.twoSwap,
-                     params.limiteIteracoesSemMelhoria,
-                     params.percentualPerturbacao,
-                     params.limiteTempoHoras,
-                     maquinas,
-                     vetOperacao,
-                     controleOp,
-                     tardiness_maq,
-                     o);
+    const double tempoExecucaoSegundos =
+        std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - inicioExecucao).count();
 
-    tempo_execucao = high_resolution_clock::now() - t1;
-    const double tempoExecucaoSegundos = duration<double>(tempo_execucao).count();
-
-    fileSolution.open(argv[1]);
-    if (!fileSolution.is_open())
+    std::ofstream arquivoSaida(argv[1]);
+    if (!arquivoSaida.is_open())
     {
         std::cerr << "Nao foi possivel criar o arquivo de saida: " << argv[1] << std::endl;
         return 1;
     }
 
-    const auto idSaida = extrairIdentificacao(argsc, argv, m, o);
+    const auto idSaida = extrairIdentificacao(argc, argv, numMaquinas, numOperacoes);
 
-    fileSolution
-        << "Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates" << endl
+    arquivoSaida
+        << "Cenario,Execucao,Instancia,O,M,T,C,Solucao_Inicial,ILS,Tempo_Execucao(s),KTNS_Antigo,KTNS_Novo,Empates\n"
         << idSaida.cenario << ","
         << idSaida.execucao << ","
         << idSaida.instancia << ","
-        << o << ","
-        << m << ","
-        << t << ","
-        << c << ","
-        << sol_inicial << ","
-        << ils << ","
+        << numOperacoes << ","
+        << numMaquinas << ","
+        << numConjuntosFerramentas << ","
+        << capacidadeMagazine << ","
+        << solucaoInicial << ","
+        << solucaoIls << ","
         << tempoExecucaoSegundos << ","
         << estatisticasKtns.ktnsAntigo << ","
         << estatisticasKtns.ktnsNovo << ","
-        << estatisticasKtns.empates << endl;
+        << estatisticasKtns.empates << '\n';
 
-    fileSolution.close();
-
-    if (argsc >= 5)
-    {
+    if (argc >= 5)
         escreverMatrizFinalCompilada(argv[2], argv[3], argv[4]);
-    }
 
     return 0;
 }

@@ -19,14 +19,6 @@ namespace Configuracao
     inline constexpr double PERCENTUAL_PERTURBACAO_6M = 0.01;
     inline constexpr int LIMITE_TEMPO_HORAS_6M = 2;
 
-    // Mantém aliases padrão (6 máquinas) para compatibilidade
-    inline constexpr int RE_INSERTION = RE_INSERTION_6M;
-    inline constexpr int INSERTION_IM = INSERTION_IM_6M;
-    inline constexpr int TWO_SWAP = TWO_SWAP_6M;
-    inline constexpr int LIMITE_ITERACOES_SEM_MELHORIA = LIMITE_ITERACOES_SEM_MELHORIA_6M;
-    inline constexpr double PERCENTUAL_PERTURBACAO = PERCENTUAL_PERTURBACAO_6M;
-    inline constexpr int LIMITE_TEMPO_HORAS = LIMITE_TEMPO_HORAS_6M;
-
     struct ParametrosILS
     {
         int reInsertion;
